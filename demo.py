@@ -1,132 +1,210 @@
 from streamlit_calendar import calendar
-from datetime import datetime
+from datetime import datetime, timedelta
 import streamlit as st
 import pandas as pd
 import time
+import pyodbc
+import re
+import os
+
+server = os.environ.get("serverGFT")
+database = os.environ.get("databaseGFT")
+username = os.environ.get("usernameGFT")
+password = os.environ.get("passwordGFT")
+SQLaddress = os.environ.get("addressGFT")
+
+def getAll():
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+
+    sql_query = '''
+        SELECT DISTINCT RTrim(Wennsoft_Branch) as Wennsoft_Branch , Rtrim(BranchName) as BranchName FROM [dbo].[GFT_SV00077_Ext]
+        WHERE Wennsoft_Branch <> 'Pensacola' AND BranchName NOT IN ('Pensacola', 'Corporate', 'Guardian Connect')
+        '''    
+    cursor.execute(sql_query)
+    result = cursor.fetchall()
+    rows_transposed = [result for result in zip(*result)]
+    branchDf = pd.DataFrame(dict(zip(['Wennsoft_Branch', 'BranchName'], rows_transposed)))
+    
+    sql_query = '''
+        SELECT [Name]
+      ,[Color]
+      ,[Start]
+      ,[End]
+      ,[ResourceId]
+      ,[Region]
+      ,[BranchName]
+      ,[Email]
+      ,[RowID]
+    FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]'''    
+    cursor.execute(sql_query)
+    result = cursor.fetchall()
+    rows_transposed = [result for result in zip(*result)]
+    eventDf = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'RowID'], rows_transposed)))
+
+    sql_query = '''
+        SELECT [BranchName]
+      ,[Name]
+      ,[Phone]
+      ,[Email]
+      ,[Team]
+      ,[RowID]
+    FROM [GFT].[dbo].[CF_OnCall_Contact]
+    '''    
+    cursor.execute(sql_query)
+    result = cursor.fetchall()
+    rows_transposed = [result for result in zip(*result)]
+    contactDf = pd.DataFrame(dict(zip(['BranchName', 'Name', 'Phone', 'Email', 'Team', 'RowID'], rows_transposed)))
+
+    cursor.close()
+    conn.close()
+    return branchDf, contactDf, eventDf
+
+def updateEvents(branchName, eventDf):
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+
+    # delete_query = "DELETE FROM [GFT].[dbo].[CF_OnCall_Contact] WHERE BranchName = ?"
+    # cursor.execute(delete_query, (branchName,))
+    # conn.commit()
+    
+    sql_query = '''
+        SELECT [Name]
+            ,[Color]
+            ,[Start]
+            ,[End]
+            ,[ResourceId]
+            ,[Region]
+            ,[BranchName]
+            ,[Email]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
+        WHERE BranchName = ? 
+    '''
+    cursor.execute(sql_query, (branchName),)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    cc = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+      ,'Email', 'RowID'], rows_transposed)))
+
+    update_query = '''
+    UPDATE [GFT].[dbo].[CF_OnCall_Calendar_Events]
+    SET [Name] = ?,
+        [Color] = ?,
+        [Start] = ?,
+        [End] = ?,
+        [ResourceId] = ?,
+        [Region] = ?,
+        [BranchName] = ?,
+        [Email] = ?
+    WHERE [RowID] = ?
+    '''
+    for index, row in eventDf.iterrows():
+        values = (
+            row['Name'],
+            row['Color'],
+            str(row['Start']),
+            str(row['End']),
+            row['ResourceId'],
+            row['Region'],
+            row['BranchName'],
+            row['Email'],
+            row['RowID']
+        )
+        cursor.execute(update_query, values)
+        conn.commit()
+    # eventDf = eventDf.dropna()
+    # data = eventDf[['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName','Email']].values.tolist()
+    # data = [row for row in data]
+    # insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Calendar_Events] ([Name], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [Email]) VALUES (?,?,?,?,?,?,?,?)"
+    # if data:
+    #     cursor.executemany(insert_query, data)
+    #     conn.commit()
+
+    sql_query = '''
+        SELECT [Name]
+            ,[Color]
+            ,[Start]
+            ,[End]
+            ,[ResourceId]
+            ,[Region]
+            ,[BranchName]
+            ,[Email]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
+        WHERE BranchName = ? 
+    '''
+    cursor.execute(sql_query, (branchName),)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    cc = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+      ,'Email', 'RowID'], rows_transposed)))
+    
+def insertEvents(branchName, eventDf):
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+
+    delete_query = "DELETE FROM [GFT].[dbo].[CF_OnCall_Calendar_Events] WHERE BranchName = ?"
+    cursor.execute(delete_query, (branchName),)
+    conn.commit()
+
+    data = eventDf[['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName','Email']].values.tolist()
+    data = [row for row in data]
+    insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Calendar_Events] ([Name], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [Email]) VALUES (?,?,?,?,?,?,?,?)"
+    if data:
+        cursor.executemany(insert_query, data)
+        conn.commit()
+
+    sql_query = '''
+        SELECT [Name]
+            ,[Color]
+            ,[Start]
+            ,[End]
+            ,[ResourceId]
+            ,[Region]
+            ,[BranchName]
+            ,[Email]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
+        WHERE BranchName = ? 
+    '''
+    cursor.execute(sql_query, (branchName),)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    cc = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+      ,'Email', 'RowID'], rows_transposed)))
 
 st.set_page_config(page_title="On Call Schedule Calendar", page_icon="📆", layout="wide")
-# st.write("hiTest")
+
 calendar_options = {}
-if "contacts" not in st.session_state:
-    st.session_state.contacts = [
-        {   
-            'BranchShortName':'FTL',
-            "name": "Bob",
-            "phone": "000-000-0000",
-            "email": "primaryBob@guardianfueltech.com",
-            "team": ""
-        },
-        {
-            'BranchShortName':'FTL',
-            "name": "John",
-            "phone": "000-000-0000",
-            "email": "primaryJohn@guardianfueltech.com",
-            "team": ""
-        },
-        {
-            'BranchShortName':'FTL',
-            "name": "Boo",
-            "phone": "000-000-0000",
-            "email": "primaryBoo@guardianfueltech.com",
-            "team": ""
-        },
-        {
-            'BranchShortName':'FTL',
-            "name": "Charlie",
-            "phone": "000-000-0000",
-            "email": "primaryCharlie@guardianfueltech.com",
-            "team": ""
-        },
-        {
-            'BranchShortName':'SAN',
-            "name": "BaD",
-            "phone": "000-000-0000",
-            "email": "",
-            "team": "Team 3"
-        },
-        {
-            'BranchShortName':'SAN',
-            "name": "Good",
-            "phone": "000-000-0000",
-            "email": "",
-            "team": "Team 3"
-        },
-        {
-            'BranchShortName':'SAN',
-            "name": "Brian",
-            "phone": "000-000-0000",
-            "email": "",
-            "team": "Team 3"
-        },
-        {
-            'BranchShortName':'SAN',
-            "name": "Mike",
-            "phone": "000-000-0000",
-            "email": "",
-            "team": "Team 3"
-        },
-        {
-            'BranchShortName':'SAN',
-            "name": "Dave",
-            "phone": "000-000-0000",
-            "email": "",
-            "team": "Lead 2"
-        },
-        {
-            'BranchShortName':'SAN',
-            "name": "AMy",
-            "phone": "000-000-0000",
-            "email": "",
-            "team": "Lead 2"
-        }
-    ]
-    csv_filename = "contact.csv"
-    df = pd.DataFrame(st.session_state.contacts)
-    df.to_csv(csv_filename, index=False)
-
-if "calendar_events" not in st.session_state:
-    st.session_state.calendar_events = [
-        {'Name': 'Team 3/Lead 2', 'color': 'magenta', 'start': '2023-07-19T00:00:00', 'end': '2023-07-21T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'SAN', 'email':''}, 
-        {'Name': 'Team 3/Lead 2', 'color': 'magenta', 'start': '2023-07-21T00:00:00', 'end': '2023-07-27T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'SAN', 'email':''}, 
-        {'Name': 'Team 2/Lead 1', 'color': 'magenta', 'start': '2023-07-28T00:00:00', 'end': '2023-08-03T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'SAN', 'email':''}, 
-        {'Name': 'Team 1/Lead 1', 'color': 'magenta', 'start': '2023-08-04T00:00:00', 'end': '2023-08-10T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'SAN', 'email':''}, 
-        {'Name': 'Team 4/Lead 1', 'color': 'magenta', 'start': '2023-08-11T00:00:00', 'end': '2023-08-17T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'SAN', 'email':''}, 
-        {'Name': 'Team 3/Lead 1', 'color': 'magenta', 'start': '2023-08-18T00:00:00', 'end': '2023-08-24T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'SAN', 'email':''}, 
-        {'Name': 'Team 2/Lead 2', 'color': 'magenta', 'start': '2023-08-25T00:00:00', 'end': '2023-08-31T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'SAN', 'email':''},
-    
-        {'Name': 'Bob', 'color': 'blue', 'start': '2023-08-11T00:00:00', 'end': '2023-08-17T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'FTL', 'email':'primaryBob@guardianfueltech.com'}, 
-        {'Name': 'John', 'color': 'blue', 'start': '2023-08-18T00:00:00', 'end': '2023-08-24T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'FTL', 'email':'primaryJohn@guardianfueltech.com'}, 
-        {'Name': 'Boo', 'color': 'blue', 'start': '2023-08-25T00:00:00', 'end': '2023-08-31T00:00:00', 'resourceId': 'Primary', 'Region':'North', 'BranchShortName':'FTL', 'email':'primaryBoo@guardianfueltech.com'}
-    ]
-    csv_filename = "calendar_events.csv"
-    df = pd.DataFrame(st.session_state.calendar_events)
-    df.to_csv(csv_filename, index=False)
+if "branch" not in st.session_state:
+    st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events = getAll()
+# st.write(st.session_state.branch)
+# st.write(st.session_state.contacts)
+# st.write(st.session_state.calendar_events)
+if 'changed' not in st.session_state:
+    st.session_state.changed = False
 if 'selected_branches' not in st.session_state:
-    st.session_state.selected_branches = ['SAN']
+    st.session_state.selected_branches = ['Atlanta']
 if 'filtered_events' not in st.session_state:
-    st.session_state.filtered_events = [event for event in st.session_state.calendar_events if event['BranchShortName'] in st.session_state.selected_branches]
+    mask = st.session_state.calendar_events['BranchName'].isin(st.session_state.selected_branches)
+    st.session_state.filtered_events = st.session_state.calendar_events[mask]
 if 'filtered_contacts' not in st.session_state:
-    st.session_state.filtered_contacts = [event for event in st.session_state.contacts if event['BranchShortName'] in st.session_state.selected_branches]
+    mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
+    st.session_state.filtered_contacts = st.session_state.contacts[mask]
 
-if "branch_names_set" not in st.session_state:
-    st.session_state.branch_names_set = {"BIR", "FTL", "FTM", "GULF", "JAX", "LAF", "SAN", "SAV", "TAM", "TALLY"}
-
-new_branch_name = st.sidebar.text_input("Enter New Branch Name:")
-if new_branch_name:
-    st.session_state.branch_names_set.add(new_branch_name)
-
-st.markdown('<style>div.sidebar{width: 250px;}</style>', unsafe_allow_html=True)
 st.sidebar.subheader("BranchName")
-branch_names_set = set(event['BranchShortName'] for event in st.session_state.calendar_events)
-unique_branch_names = sorted(list(branch_names_set.union(st.session_state.branch_names_set)))
-selected_branches = st.sidebar.multiselect("Select Branches", unique_branch_names, default=['SAN'], key="select_branches")
+# branch_names_set = set(event['BranchName'] for event in st.session_state.calendar_events)
+selected_branches = st.sidebar.multiselect("Select Branches", st.session_state.branch['BranchName'], key="select_branches")
 if selected_branches != st.session_state.selected_branches:
     st.session_state.selected_branches = selected_branches
-    st.session_state.filtered_events = [event for event in st.session_state.calendar_events if event['BranchShortName'] in selected_branches]
-    st.session_state.filtered_contacts = [event for event in st.session_state.contacts if event['BranchShortName'] in selected_branches]
-    for event in st.session_state.filtered_events:
-        event["start"] = event["start"].isoformat() if isinstance(event["start"], datetime) else event["start"]
-        event["end"] = event["end"].isoformat() if isinstance(event["end"], datetime) else event["end"]
+    mask = st.session_state.calendar_events['BranchName'].isin(st.session_state.selected_branches)
+    st.session_state.filtered_events = st.session_state.calendar_events[mask]
+    mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
+    st.session_state.filtered_contacts = st.session_state.contacts[mask]
 
 # display to beinformed
 # st.write(st.session_state.selected_branches)
@@ -136,13 +214,15 @@ if selected_branches != st.session_state.selected_branches:
 st.session_state.selected_tab = st.sidebar.radio("Select Tab", ("Calendar", "Edit Calendar", "Edit Contact"))
     
 def calendar_tab():
+    current_date = datetime.now()
+    iso_date = current_date.strftime('%Y-%m-%d')
     calendar_options = {
                 'headerToolbar': {
-                    'left': 'today',
+                    'left': 'dayGridMonth',
                     'center': 'title',
                 },
                 'navLinks': 'true',
-                'initialDate': '2023-07-01',
+                'initialDate': iso_date,
                 "slotMinTime": "08:00:00",
                 "slotMaxTime": "18:00:00",
                 'initialView': 'dayGridMonth',
@@ -152,9 +232,31 @@ def calendar_tab():
 
     with col1:
         new_calendar_events = [] 
-        for event in st.session_state.filtered_events:
-            new_event = event.copy() 
-            new_event['title'] = f"{event['Name']} {event['resourceId']} - {event['Region']} - {event['BranchShortName']}"
+        for index, row in st.session_state.filtered_events.iterrows():
+            if isinstance(row['Start'], pd.Timestamp) and isinstance(row['End'], pd.Timestamp):
+                new_event = {
+                    'title': f"{row['Name']} {row['ResourceId']} - {row['Region']} - {row['BranchName']}",
+                    'name':row['Name'],
+                    'color': row['Color'],  
+                    'start': row['Start'].strftime("%Y-%m-%d %H:%M:%S"), 
+                    'end': row['End'].strftime("%Y-%m-%d %H:%M:%S"),      
+                    'resourceId': row['ResourceId'], 
+                    'Region': row['Region'], 
+                    'BranchName': row['BranchName'], 
+                    'email': row['Email'] 
+                }
+            else:
+                new_event = {
+                    'title': f"{row['Name']} {row['ResourceId']} - {row['Region']} - {row['BranchName']}",
+                    'name':row['Name'],
+                    'color': row['Color'],  
+                    'start': row['Start'], 
+                    'end': row['End'],      
+                    'resourceId': row['ResourceId'], 
+                    'Region': row['Region'], 
+                    'BranchName': row['BranchName'], 
+                    'email': row['Email'] 
+                }
             new_calendar_events.append(new_event)
         st.session_state.state = calendar(events=new_calendar_events, options=calendar_options)
     event_click_data = st.session_state.state.get('eventClick')
@@ -167,7 +269,6 @@ def calendar_tab():
             if event_click_data and 'event' in event_click_data:
                 event = st.session_state.state['eventClick']['event']
                 st.write(f"<h3 style='color: {event['backgroundColor']}; font-family: Arial;'><strong>{event['title']}</h3>", unsafe_allow_html=True)
-                color = event['backgroundColor']
                 formatted_start = datetime.strptime(event['start'], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%d %H:%M")
                 formatted_end = datetime.strptime(event['end'], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%d %H:%M")
                 st.write(
@@ -189,51 +290,64 @@ def calendar_tab():
                     # st.write(f"<p style='font-family: Arial;'><strong>Resource ID: </p>", unsafe_allow_html=True)
                     # st.write(f"<p style='font-family: Arial;'>{state['eventClick']['el']['fcSeg']['eventRange']['def']['resourceIds']}</p>", unsafe_allow_html=True)
 
-                if(event['extendedProps']['BranchShortName'] == "SAN"):
-                    stripped_title = event['title'].replace(event['extendedProps']['BranchShortName'], "").strip()
-                    matching_contacts = [contact for contact in st.session_state.filtered_contacts if contact["team"] in event['extendedProps']['Name']]
-                    if matching_contacts:
-                        leadNames = [contact['name'] for contact in matching_contacts if "Lead" in contact['team']]
-                        teamNames = [contact['name'] for contact in matching_contacts if "Team" in contact['team']]
-                        phones = [contact['phone'] for contact in matching_contacts]
-                        leadPhones = [contact['phone'] for contact in matching_contacts if "Lead" in contact['team']]
-                        teamPhones = [contact['phone'] for contact in matching_contacts if "Team" in contact['team']]
-                        emails = [contact['email'] for contact in matching_contacts]
-                        leadEmails = [contact['email'] for contact in matching_contacts if "Lead" in contact['team']]
-                        teamEmails = [contact['email'] for contact in matching_contacts if "Team" in contact['team']]
+                if(event['extendedProps']['BranchName'] == "Sanford"):
+
+                    event_name = event['extendedProps']['name']
+                    team_part, lead_part = event_name.split('/')
+                    matching_contact = st.session_state.filtered_contacts[
+                        (st.session_state.filtered_contacts["Team"] == team_part) | (st.session_state.filtered_contacts["Team"] == lead_part)
+                    ]
+                    # matching_contact = st.session_state.filtered_contacts[st.session_state.filtered_contacts["Team"].isin([event['extendedProps']['Name']])]
+                    # matching_contact = pd.DataFrame(st.session_state.filtered_contacts[st.session_state.filtered_contacts["Team"] == event['title']].copy())
+                    if len(matching_contact)>0:
+                        leadNames = matching_contact.loc[matching_contact["Team"].str.contains("Lead"), "Name"].tolist()
+                        teamNames = matching_contact.loc[matching_contact["Team"].str.contains("Team"), "Name"].tolist()
+                        Phones = matching_contact["Phone"].tolist()
+                        leadPhones = matching_contact.loc[matching_contact["Team"].str.contains("Lead"), "Phone"].tolist()
+                        teamPhones = matching_contact.loc[matching_contact["Team"].str.contains("Team"), "Phone"].tolist()
+                        emails = matching_contact["Email"].tolist()
+                        leadEmails = matching_contact.loc[matching_contact["Team"].str.contains("Lead"), "Email"].tolist()
+                        teamEmails = matching_contact.loc[matching_contact["Team"].str.contains("Team"), "Email"].tolist()
+
                         st.write("<p style='font-family: Arial;'><strong>Lead Contacts:</strong></p>", unsafe_allow_html=True)
-                        for lead_name, lead_phone, lead_email in zip(leadNames, leadPhones, leadEmails):
-                            st.write(f"<p style='font-family: Arial;'>{lead_name} |<br>{lead_phone} |<br> {lead_email}</p>", unsafe_allow_html=True)
+                        for lead_name, lead_Phone, lead_email in zip(leadNames, leadPhones, leadEmails):
+                            st.write(f"<p style='font-family: Arial;'>{lead_name} |<br>{lead_Phone} |<br> {lead_email}</p>", unsafe_allow_html=True)
                         
                         st.write("<p style='font-family: Arial;'><strong>Team Contacts:</strong></p>", unsafe_allow_html=True)
-                        for team_name, team_phone, team_email in zip(teamNames, teamPhones, teamEmails):
-                            st.write(f"<p style='font-family: Arial;'>{team_name} |<br>{team_phone} |<br>{team_email}</p>", unsafe_allow_html=True)
+                        for team_name, team_Phone, team_email in zip(teamNames, teamPhones, teamEmails):
+                            st.write(f"<p style='font-family: Arial;'>{team_name} |<br>{team_Phone} |<br>{team_email}</p>", unsafe_allow_html=True)
                     else:
                         st.write("No matching contact found for the event.")
                 else:
-                    matching_contact = next((contact for contact in st.session_state.contacts if contact["email"] == event['extendedProps']['email']), None)
-                    if matching_contact:
-                        st.write(f"<p style='font-family: Arial;'><strong>Phone: </strong>{matching_contact['phone']}</p>", unsafe_allow_html=True)
-                        st.write(f"<p style='font-family: Arial;'><strong>Email: </strong>{matching_contact['email']}</p>", unsafe_allow_html=True)
+                    matching_contact = []
+                    matching_rows = st.session_state.filtered_contacts[st.session_state.filtered_contacts["Email"] == event['extendedProps']['email']]
+
+                    if not matching_rows.empty:
+                        matching_contact = matching_rows.iloc[0]
+                    if len(matching_contact)>0:
+                        st.write(f"<p style='font-family: Arial;'><strong>Phone: </strong>{matching_contact['Phone']}</p>", unsafe_allow_html=True)
+                        st.write(f"<p style='font-family: Arial;'><strong>Email: </strong>{matching_contact['Email']}</p>", unsafe_allow_html=True)
                     else:
                         st.write("No matching contact found for the event.")
 
                 st.form_submit_button("")
 def event_tab():
     # with st.expander("******Add Event Form******", expanded=True):
-        if st.session_state.filtered_events == None:
-            st.session_state.filtered_events = {"Name": "", "color": "", "start": "",
-                "end": "", "resourceId": "", 'Region':'', "BranchShortName":""}    
         with st.form("add_event_form"):
+            if st.session_state.filtered_events is None or len(st.session_state.filtered_events) == 0 :
+                st.session_state.filtered_events = pd.DataFrame([{"Name": "", "color": "", "start": datetime.now(),
+                "end":  datetime.now(), "resourceId": "", 'Region':'', "BranchShortName":""}])
+                one_hour = timedelta(hours=1)   
+                current_end_time = st.session_state.filtered_events.loc[0, 'end']
+                new_end_time = current_end_time + one_hour
+
+                # Update the end time in the DataFrame
+                st.session_state.filtered_events.loc[0, 'end'] = new_end_time
+            else:
+                st.session_state.filtered_events["Start"] = pd.to_datetime(st.session_state.filtered_events["Start"])
+                st.session_state.filtered_events["End"] = pd.to_datetime(st.session_state.filtered_events["End"])
             # width = 800
             # inwidth = 500
-            for event in st.session_state.filtered_events:
-                if isinstance(event["start"], str):
-                    event["start"] = datetime.strptime(event["start"], "%Y-%m-%dT%H:%M:%S")
-                if isinstance(event["end"], str):
-                    event["end"] = datetime.strptime(event["end"], "%Y-%m-%dT%H:%M:%S")
-
-
             st.session_state.filtered_events = st.data_editor(
                 st.session_state.filtered_events,
                 column_config={
@@ -242,25 +356,25 @@ def event_tab():
                         help="Name",
                         # width=inwidth/6,
                     ),
-                    "start": st.column_config.DatetimeColumn(
-                        "Event Start DateTime",
-                        help="Event Start DateTime",
+                    "Start": st.column_config.DatetimeColumn(
+                        "Event Start Date",
+                        help="Event Start Date",
                         # width=inwidth/6,
                         step=1
                     ),
-                    "end": st.column_config.DatetimeColumn(
+                    "End": st.column_config.DatetimeColumn(
                         "Event End Date",
                         help="Event End Date",
                         # width=inwidth/6,
                         step=1
                     ),
-                    "color": st.column_config.SelectboxColumn(
+                    "Color": st.column_config.SelectboxColumn(
                         "Event Color",
                         help="Event Color",
                         # width=inwidth/6,
                         options= ["blue", "orange", "red", "purple", "darkgreen", "gold", "magenta"]
                     ),
-                    "resourceId": st.column_config.SelectboxColumn(
+                    "ResourceId": st.column_config.SelectboxColumn(
                         "Resource ID",
                         help="Resource ID",
                         # width=inwidth/6,
@@ -272,11 +386,23 @@ def event_tab():
                         # width=inwidth/6,
                         options= ["North", "South", "None"]
                     ),
-                    "BranchShortName": st.column_config.SelectboxColumn(
-                        "BranchShortName",
-                        help="BranchShortName",
+                    "BranchName": st.column_config.SelectboxColumn(
+                        "BranchName",
+                        help="BranchName",
                         # width=inwidth/6,
-                        options= selected_branches
+                        options= selected_branches,
+                        disabled=True
+                    ),
+                    "Email": st.column_config.TextColumn(
+                        "Email",
+                        help="Email",
+                        # width=inwidth/6,
+                    ),
+                    "RowID": st.column_config.NumberColumn(
+                        "RowID",
+                        help="RowID",
+                        # width=inwidth/6,
+                        disabled=True
                     ),
                 },
                 hide_index=True,
@@ -284,56 +410,62 @@ def event_tab():
                 num_rows="dynamic",
                 key="addCalendar"
             )
-            for event in st.session_state.filtered_events:
-                event["start"] = event["start"].isoformat() if isinstance(event["start"], datetime) else event["start"]
-                event["end"] = event["end"].isoformat() if isinstance(event["end"], datetime) else event["end"]
 
+            st.error("PLEASE do not submit 00:00:00 midnight!")
+            st.warning("Kindly reminder, this Button will temporarily store on your device")
             calendarSubmit = st.form_submit_button("Calendar Submit")
             if calendarSubmit:
+                st.session_state.filtered_events["BranchName"] = st.session_state.selected_branches[0]
+                if all(isinstance(value, pd.Timestamp) for value in st.session_state.filtered_events["End"]):
+                    st.session_state.filtered_events["Start"] = st.session_state.filtered_events["Start"].dt.strftime("%Y-%m-%d %H:%M:%S")
+                    st.session_state.filtered_events["End"] = st.session_state.filtered_events["End"].dt.strftime("%Y-%m-%d %H:%M:%S")    
                 with st.spinner("please wait"):
                     time.sleep(1)
-                for event in st.session_state.filtered_events:
-                    event["start"] = event["start"].isoformat() if isinstance(event["start"], datetime) else event["start"]
-                    event["end"] = event["end"].isoformat() if isinstance(event["end"], datetime) else event["end"]
-
+                st.session_state.changed = True    
                 st.experimental_rerun()
 
 def contact_tab():
     # with st.expander("******Edit Contact Form******", expanded=True):
+        if len(st.session_state.filtered_contacts) == 0:
+            st.session_state.filtered_contacts = pd.DataFrame([{'BranchName':st.session_state.selected_branches[0], "Name": "", "Phone": "000-000-0000", "Email": "@guardianfueltech.com", "Team": "", "RowID":""}])
         with st.form("edit_contact_form"):
             # width = 800
             # inwidth = 500
-            if len(st.session_state.filtered_contacts) == 0 :
-                st.session_state.filtered_contacts = [{'BranchShortName':'', "name": "", "phone": "000-000-0000", "email": "@guardianfueltech.com", "team": ""}]
-
             st.session_state.filtered_contacts = st.data_editor(
                 st.session_state.filtered_contacts,
                 column_config={
-                    "BranchShortName": st.column_config.SelectboxColumn(
-                        "BranchShortName",
-                        help="BranchShortName",
+                    "BranchName": st.column_config.SelectboxColumn(
+                        "BranchName",
+                        help="BranchName",
                         # width=inwidth/6,
-                        options= selected_branches
+                        options= selected_branches,
+                        disabled=True
                     ),
-                    "name": st.column_config.TextColumn(
-                        "name",
-                        help="name",
-                        # width=inwidth/6,
-                    ),
-                    "phone": st.column_config.TextColumn(
-                        "phone",
-                        help="phone",
+                    "Name": st.column_config.TextColumn(
+                        "Name",
+                        help="Name",
                         # width=inwidth/6,
                     ),
-                    "email": st.column_config.TextColumn(
-                        "email",
-                        help="email",
+                    "Phone": st.column_config.TextColumn(
+                        "Phone",
+                        help="Phone",
                         # width=inwidth/6,
                     ),
-                    "team": st.column_config.TextColumn(
-                        "team",
-                        help="team",
+                    "Email": st.column_config.TextColumn(
+                        "Email",
+                        help="Email",
                         # width=inwidth/6,
+                    ),
+                    "Team": st.column_config.TextColumn(
+                        "Team",
+                        help="Team",
+                        # width=inwidth/6,
+                    ),
+                    "RowID": st.column_config.NumberColumn(
+                        "RowID",
+                        help="RowID",
+                        # width=inwidth/6,
+                        disabled=True
                     ),
                 },
                 hide_index=True,
@@ -341,17 +473,35 @@ def contact_tab():
                 num_rows="dynamic",
                 key="editContacts"
             )
+            st.warning("Kindly reminder, this Button will temporarily store on your device")
             contactsSubmit = st.form_submit_button("Contacts Submit")
             if contactsSubmit:
+                st.session_state.filtered_contacts["BranchName"] = st.session_state.selected_branches[0]
                 with st.spinner("please wait"):
                     time.sleep(1)
+                st.session_state.changed = True
                 st.experimental_rerun()
             
-            
-if st.session_state.selected_tab == "Calendar":
-    calendar_tab()
-elif st.session_state.selected_tab == "Edit Calendar":
-    event_tab()
-elif st.session_state.selected_tab == "Edit Contact":
-    contact_tab()
+
+if len(st.session_state.select_branches) == 0:
+    st.warning("please select a branch")
+else:
+    if st.session_state.selected_tab == "Calendar":
+        calendar_tab()
+    if(len(selected_branches)>=2):
+        st.sidebar.error("Can't edit with multiple selected branches! Please select one branch only")
+        st.error("Can't edit with multiple selected branches! Please select one branch only")
+    else:
+        if st.session_state.selected_tab == "Edit Calendar":
+            event_tab()
+        if st.session_state.selected_tab == "Edit Contact":
+            contact_tab()
+        if st.session_state.changed:
+            st.sidebar.success("Caution! Pressing this button will update both contacts and events in database.")
+            if st.sidebar.button("Update to database"):
+                insertEvents(st.session_state.selected_branches, st.session_state.filtered_events)
+                st.session_state.changed = False
+                # st.experimental_rerun()
+
+
 
