@@ -290,8 +290,7 @@ def calendar_tab():
                     # st.write(f"<p style='font-family: Arial;'><strong>Resource ID: </p>", unsafe_allow_html=True)
                     # st.write(f"<p style='font-family: Arial;'>{state['eventClick']['el']['fcSeg']['eventRange']['def']['resourceIds']}</p>", unsafe_allow_html=True)
 
-                if(event['extendedProps']['BranchName'] == "Sanford"):
-
+                if ("Team" in event['extendedProps']['name']):
                     event_name = event['extendedProps']['name']
                     team_part, lead_part = event_name.split('/')
                     matching_contact = st.session_state.filtered_contacts[
