@@ -335,14 +335,14 @@ def event_tab():
     # with st.expander("******Add Event Form******", expanded=True):
         with st.form("add_event_form"):
             if st.session_state.filtered_events is None or len(st.session_state.filtered_events) == 0 :
-                st.session_state.filtered_events = pd.DataFrame([{"Name": "", "color": "", "start": datetime.now(),
-                "end":  datetime.now(), "resourceId": "", 'Region':'', "BranchShortName":""}])
+                st.session_state.filtered_events = pd.DataFrame([{"Name": "", "Color": "", "Start": datetime.now(),
+                "End":  datetime.now(), "ResourceId": "", 'Region':'', "BranchName":"", "Email":"@guardianfueltech.com"}])
                 one_hour = timedelta(hours=1)   
-                current_end_time = st.session_state.filtered_events.loc[0, 'end']
+                current_end_time = st.session_state.filtered_events.loc[0, 'End']
                 new_end_time = current_end_time + one_hour
 
                 # Update the end time in the DataFrame
-                st.session_state.filtered_events.loc[0, 'end'] = new_end_time
+                st.session_state.filtered_events.loc[0, 'End'] = new_end_time
             else:
                 st.session_state.filtered_events["Start"] = pd.to_datetime(st.session_state.filtered_events["Start"])
                 st.session_state.filtered_events["End"] = pd.to_datetime(st.session_state.filtered_events["End"])
@@ -502,6 +502,10 @@ else:
                 insertEvents(st.session_state.selected_branches, st.session_state.filtered_events)
                 st.session_state.changed = False
                 # st.experimental_rerun()
+
+
+
+
 
 
 
