@@ -14,7 +14,7 @@ password = os.environ.get("passwordGFT")
 SQLaddress = os.environ.get("addressGFT")
 
 def getAll():
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -30,18 +30,19 @@ def getAll():
     sql_query = '''
         SELECT [Name]
       ,[Color]
-      ,[Start]
-      ,[End]
+      ,CAST([Start] AS NVARCHAR(MAX)) AS StartString
+      ,CAST([End] AS NVARCHAR(MAX)) AS EndString
       ,[ResourceId]
       ,[Region]
       ,[BranchName]
       ,[Email]
-      ,[RowID]
-    FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]'''    
+      ,CAST([RowID] AS NVARCHAR(MAX)) AS RowIDString
+        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
+        '''    
     cursor.execute(sql_query)
     result = cursor.fetchall()
-    rows_transposed = [result for result in zip(*result)]
-    eventDf = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'RowID'], rows_transposed)))
+    data = [list(row) for row in result]
+    eventDf = pd.DataFrame(data, columns=['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'RowID'])
 
     sql_query = '''
         SELECT [BranchName]
@@ -49,20 +50,20 @@ def getAll():
       ,[Phone]
       ,[Email]
       ,[Team]
-      ,[RowID]
+      ,CAST([RowID] AS NVARCHAR(MAX)) AS RowIDString
     FROM [GFT].[dbo].[CF_OnCall_Contact]
-    '''    
+        '''    
     cursor.execute(sql_query)
     result = cursor.fetchall()
-    rows_transposed = [result for result in zip(*result)]
-    contactDf = pd.DataFrame(dict(zip(['BranchName', 'Name', 'Phone', 'Email', 'Team', 'RowID'], rows_transposed)))
+    data = [list(row) for row in result]
+    contactDf = pd.DataFrame(data, columns=['BranchName', 'Name', 'Phone', 'Email', 'Team', 'RowID'])
 
     cursor.close()
     conn.close()
     return branchDf, contactDf, eventDf
 
 def updateEvents(branchName, eventDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -143,7 +144,7 @@ def updateEvents(branchName, eventDf):
       ,'Email', 'RowID'], rows_transposed)))
     
 def insertEvents(branchName, eventDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -195,24 +196,37 @@ if 'filtered_events' not in st.session_state:
 if 'filtered_contacts' not in st.session_state:
     mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
     st.session_state.filtered_contacts = st.session_state.contacts[mask]
+if 'selected_tab' not in st.session_state:
+    st.session_state.selected_tab = "Calendar"
 
 st.sidebar.subheader("BranchName")
 # branch_names_set = set(event['BranchName'] for event in st.session_state.calendar_events)
 selected_branches = st.sidebar.multiselect("Select Branches", st.session_state.branch['BranchName'], key="select_branches")
 if selected_branches != st.session_state.selected_branches:
     st.session_state.selected_branches = selected_branches
-    mask = st.session_state.calendar_events['BranchName'].isin(st.session_state.selected_branches)
-    st.session_state.filtered_events = st.session_state.calendar_events[mask]
+    mask = st.session_state.calendar_events['BranchName'].isin(st.session_state.selected_branches)    
+    st.session_state.filtered_events = pd.DataFrame(columns=st.session_state.calendar_events.columns)
+    st.session_state.filtered_events = pd.concat(
+    [st.session_state.filtered_events, st.session_state.calendar_events[mask]],
+    ignore_index=True)
+
     mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
-    st.session_state.filtered_contacts = st.session_state.contacts[mask]
+    st.session_state.filtered_contacts = pd.DataFrame(columns=st.session_state.contacts.columns)
+    st.session_state.filtered_contacts = pd.concat(
+    [st.session_state.filtered_contacts, st.session_state.contacts[mask]],
+    ignore_index=True
+)
+
 
 # display to beinformed
 # st.write(st.session_state.selected_branches)
 # st.write(st.session_state.filtered_events)
 # st.write(st.session_state.filtered_contacts)
-
+prev_selected_tab = st.session_state.selected_tab
 st.session_state.selected_tab = st.sidebar.radio("Select Tab", ("Calendar", "Edit Calendar", "Edit Contact"))
-    
+if st.session_state.selected_tab != prev_selected_tab:
+    st.experimental_rerun()
+
 def calendar_tab():
     current_date = datetime.now()
     iso_date = current_date.strftime('%Y-%m-%d')
@@ -291,6 +305,7 @@ def calendar_tab():
                     # st.write(f"<p style='font-family: Arial;'>{state['eventClick']['el']['fcSeg']['eventRange']['def']['resourceIds']}</p>", unsafe_allow_html=True)
 
                 if ("Team" in event['extendedProps']['name']):
+
                     event_name = event['extendedProps']['name']
                     team_part, lead_part = event_name.split('/')
                     matching_contact = st.session_state.filtered_contacts[
@@ -328,23 +343,19 @@ def calendar_tab():
                         st.write(f"<p style='font-family: Arial;'><strong>Email: </strong>{matching_contact['Email']}</p>", unsafe_allow_html=True)
                     else:
                         st.write("No matching contact found for the event.")
-
                 st.form_submit_button("")
 def event_tab():
+        if st.session_state.filtered_events is None or len(st.session_state.filtered_events) == 0 :
+            one_hour = timedelta(hours=1)   
+            new_end_time = datetime.now() + one_hour
+            st.session_state.filtered_events = pd.DataFrame([{"Name": "", "Color": "", "Start": datetime.now(),
+            "End":  new_end_time, "ResourceId": "", 'Region':'', "BranchName":"", "Email":"@guardianfueltech.com"}])
+        else:
+            st.session_state.filtered_events["Start"] = pd.to_datetime(st.session_state.filtered_events["Start"])
+            st.session_state.filtered_events["End"] = pd.to_datetime(st.session_state.filtered_events["End"])
+        
     # with st.expander("******Add Event Form******", expanded=True):
         with st.form("add_event_form"):
-            if st.session_state.filtered_events is None or len(st.session_state.filtered_events) == 0 :
-                st.session_state.filtered_events = pd.DataFrame([{"Name": "", "Color": "", "Start": datetime.now(),
-                "End":  datetime.now(), "ResourceId": "", 'Region':'', "BranchName":"", "Email":"@guardianfueltech.com"}])
-                one_hour = timedelta(hours=1)   
-                current_end_time = st.session_state.filtered_events.loc[0, 'End']
-                new_end_time = current_end_time + one_hour
-
-                # Update the end time in the DataFrame
-                st.session_state.filtered_events.loc[0, 'End'] = new_end_time
-            else:
-                st.session_state.filtered_events["Start"] = pd.to_datetime(st.session_state.filtered_events["Start"])
-                st.session_state.filtered_events["End"] = pd.to_datetime(st.session_state.filtered_events["End"])
             # width = 800
             # inwidth = 500
             st.session_state.filtered_events = st.data_editor(
@@ -359,13 +370,11 @@ def event_tab():
                         "Event Start Date",
                         help="Event Start Date",
                         # width=inwidth/6,
-                        step=1
                     ),
                     "End": st.column_config.DatetimeColumn(
                         "Event End Date",
                         help="Event End Date",
                         # width=inwidth/6,
-                        step=1
                     ),
                     "Color": st.column_config.SelectboxColumn(
                         "Event Color",
@@ -385,11 +394,11 @@ def event_tab():
                         # width=inwidth/6,
                         options= ["North", "South", "None"]
                     ),
-                    "BranchName": st.column_config.SelectboxColumn(
+                    "BranchName": st.column_config.TextColumn(
                         "BranchName",
                         help="BranchName",
                         # width=inwidth/6,
-                        options= selected_branches,
+                        default = st.session_state.selected_branches[0],
                         disabled=True
                     ),
                     "Email": st.column_config.TextColumn(
@@ -414,30 +423,30 @@ def event_tab():
             st.warning("Kindly reminder, this Button will temporarily store on your device")
             calendarSubmit = st.form_submit_button("Calendar Submit")
             if calendarSubmit:
-                st.session_state.filtered_events["BranchName"] = st.session_state.selected_branches[0]
                 if all(isinstance(value, pd.Timestamp) for value in st.session_state.filtered_events["End"]):
-                    st.session_state.filtered_events["Start"] = st.session_state.filtered_events["Start"].dt.strftime("%Y-%m-%d %H:%M:%S")
-                    st.session_state.filtered_events["End"] = st.session_state.filtered_events["End"].dt.strftime("%Y-%m-%d %H:%M:%S")    
+                    st.session_state.filtered_events["Start"] = st.session_state.filtered_events["Start"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    st.session_state.filtered_events["End"] = st.session_state.filtered_events["End"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")    
+
                 with st.spinner("please wait"):
                     time.sleep(1)
                 st.session_state.changed = True    
-                st.experimental_rerun()
+                # st.experimental_rerun()
 
 def contact_tab():
     # with st.expander("******Edit Contact Form******", expanded=True):
         if len(st.session_state.filtered_contacts) == 0:
             st.session_state.filtered_contacts = pd.DataFrame([{'BranchName':st.session_state.selected_branches[0], "Name": "", "Phone": "000-000-0000", "Email": "@guardianfueltech.com", "Team": "", "RowID":""}])
-        with st.form("edit_contact_form"):
+        with st.form(key="edit_contact_form"):
             # width = 800
             # inwidth = 500
             st.session_state.filtered_contacts = st.data_editor(
                 st.session_state.filtered_contacts,
                 column_config={
-                    "BranchName": st.column_config.SelectboxColumn(
+                    "BranchName": st.column_config.TextColumn(
                         "BranchName",
                         help="BranchName",
                         # width=inwidth/6,
-                        options= selected_branches,
+                        default=st.session_state.selected_branches[0],
                         disabled=True
                     ),
                     "Name": st.column_config.TextColumn(
@@ -474,14 +483,11 @@ def contact_tab():
             )
             st.warning("Kindly reminder, this Button will temporarily store on your device")
             contactsSubmit = st.form_submit_button("Contacts Submit")
-            if contactsSubmit:
-                st.session_state.filtered_contacts["BranchName"] = st.session_state.selected_branches[0]
-                with st.spinner("please wait"):
-                    time.sleep(1)
-                st.session_state.changed = True
-                st.experimental_rerun()
+            if not st.session_state.filtered_contacts.empty:
+                if contactsSubmit:
+                    st.session_state.changed = True
+                    st.experimental_rerun()
             
-
 if len(st.session_state.select_branches) == 0:
     st.warning("please select a branch")
 else:
@@ -501,10 +507,3 @@ else:
                 insertEvents(st.session_state.selected_branches, st.session_state.filtered_events)
                 st.session_state.changed = False
                 # st.experimental_rerun()
-
-
-
-
-
-
-
