@@ -253,7 +253,7 @@ def insertEvents(branchName, eventDf):
       ,'Email', 'RowID'], rows_transposed)))
     
 def insertContacts(branchName, contactDF):
-    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
