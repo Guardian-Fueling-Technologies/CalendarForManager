@@ -63,25 +63,28 @@ def createCsv():
     cursor.close()
     conn.close()
 
+
     if(len(contactDf)!=0):
         merged_df = pd.merge(contactDf, eventDf, on="Email", how="inner")
-        existing_df = pd.read_csv("assignCall.csv")
-        existing_numbers_str = existing_df['tech_phone_number'].astype(str).values
+
+        with open("assignCall.csv", mode='w', newline='') as file:
+            fieldnames = ["account_sid", "auth_token", "assignMessage", "tech_phone_number", "twilio_number", "assigned", "technician_manager_phone"]
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
 
         with open("assignCall.csv", mode='a', newline='') as file:
             fieldnames = ["account_sid", "auth_token", "assignMessage", "tech_phone_number", "twilio_number", "assigned"]
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             
             for index, row in merged_df.iterrows():
-                if f"1{row['Phone']}" not in existing_numbers_str:
-                    writer.writerow({
-                    "account_sid": account_sid, 
-                    "auth_token": auth_token,
-                        "assignMessage": f"Are you ready to accept this call {row['Name_x']}? If yes, please reply with '1'.",
-                        "tech_phone_number": f"1{row['Phone']}",
-                        "twilio_number": 18556258756,
-                        "assigned": 0
-                    })
+                writer.writerow({
+                "account_sid": account_sid, 
+                "auth_token": auth_token,
+                    "assignMessage": f"Are you ready to accept this call from {row['Start'][:19]} to {row['End'][:19]}, {row['Name_x']}? If yes, please reply with '1'.",
+                    "tech_phone_number": f"1{row['Phone']}",
+                    "twilio_number": 18556258756,
+                    "assigned": 0
+                })
     return
 
 def run_flask_app():
