@@ -80,7 +80,7 @@ def createCsv():
                 writer.writerow({
                 "account_sid": account_sid, 
                 "auth_token": auth_token,
-                    "assignMessage": f"Are you ready to accept this call from {row['Start'][:19]} to {row['End'][:19]}, {row['Name_x']}? If yes, please reply with '1'.",
+                    "assignMessage": f"Are you ready to accept this call from {row['Start'][:19]} to {row['End'][:19]}, {row['Name_x']}? ",
                     "tech_phone_number": f"1{row['Phone']}",
                     "twilio_number": 18556258756,
                     "assigned": 0
