@@ -7,7 +7,7 @@ import csv
 import random
 import string
 
-def assignCall(account_sid, auth_token, assignQuestion, tech_phone_number,twilio_number, firstdelaytime=15, callManagertime=25):
+def assignCall(account_sid, auth_token, assignQuestion, tech_phone_number,twilio_number, firstdelaytime=1, callManagertime=2):
     client = Client(account_sid, auth_token)
     call_timestamps = []
     # message method
@@ -29,9 +29,12 @@ def assignCall(account_sid, auth_token, assignQuestion, tech_phone_number,twilio
             limit=1
         )
         message_timestamp_str = message_timestamp.strftime("%Y-%m-%d%H:%M")
-        print(response[0].body, datetime.now(timezone.utc) - message_timestamp, message_timestamp_str)
+        if response:
+            print(response[0].body, datetime.now(timezone.utc) - message_timestamp, message_timestamp_str)
+        else:
+            print("never text before", datetime.now(timezone.utc) - message_timestamp, message_timestamp_str)
         if datetime.now(timezone.utc) - message_timestamp > timedelta(minutes=firstdelaytime):
-            print(datetime.now(timezone.utc) - message_timestamp)
+            # print(datetime.now(timezone.utc) - message_timestamp)
             if len(call_timestamps) != 0 and datetime.now(timezone.utc) - message_timestamp > timedelta(minutes=callManagertime):
                 # text technician
                 message = client.messages.create(
