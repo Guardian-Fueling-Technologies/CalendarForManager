@@ -768,7 +768,7 @@ def call_tab():
     st.table(df)
 
     for index, row in df.iterrows():
-        st.subheader(f"Processing Row {row['Start'][:19]}")
+        st.subheader(f"Processing Row {row['Start']}")
         simulate_operation(15, "Sending out message")
         simulate_operation(900, "Waiting for technician to reply")
         simulate_operation(1500, "Elevate to manager reply overtime")
