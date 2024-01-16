@@ -122,12 +122,13 @@ def getAll():
       ,[BranchName]
       ,[Email]
       ,CAST([ManagerPhone] AS NVARCHAR(MAX)) AS ManagerPhone
+      ,CAST([RowID] AS NVARCHAR(MAX)) AS RowIDString
         FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
         '''    
     cursor.execute(sql_query)
     result = cursor.fetchall()
     data = [list(row) for row in result]
-    eventDf = pd.DataFrame(data, columns=['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone'])
+    eventDf = pd.DataFrame(data, columns=['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone',"RowID"])
 
     sql_query = '''
         SELECT [BranchName]
@@ -135,78 +136,40 @@ def getAll():
       ,[Phone]
       ,[Email]
       ,[Team]
+      ,CAST([RowID] AS NVARCHAR(MAX)) AS RowIDString
     FROM [GFT].[dbo].[CF_OnCall_Contact]
         '''    
     cursor.execute(sql_query)
     result = cursor.fetchall()
     data = [list(row) for row in result]
-    contactDf = pd.DataFrame(data, columns=['BranchName', 'Name', 'Phone', 'Email', 'Team'])
+    contactDf = pd.DataFrame(data, columns=['BranchName', 'Name', 'Phone', 'Email', 'Team',"RowID"])
 
     cursor.close()
     conn.close()
     return branchDf, contactDf, eventDf
 
-def updateEvents(branchName, eventDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+def updateEvents(eventDf):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
+    df_columns = ['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone']
 
-    # delete_query = "DELETE FROM [GFT].[dbo].[CF_OnCall_Contact] WHERE BranchName = ?"
-    # cursor.execute(delete_query, (branchName,))
-    # conn.commit()
-    
-    sql_query = '''
-        SELECT [Name]
-            ,[Color]
-            ,[Start]
-            ,[End]
-            ,[ResourceId]
-            ,[Region]
-            ,[BranchName]
-            ,[Email]
-            ,[RowID]
-        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
-        WHERE BranchName = ? 
-    '''
-    cursor.execute(sql_query, (branchName),)
-    sql_query = cursor.fetchall()
-    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
-    cc = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
-      ,'Email', 'RowID'], rows_transposed)))
+    for row_id, row in eventDf.iterrows():
+        if(row_id[1]=='self'):
+            continue
+        update_query = f'UPDATE [GFT].[dbo].[CF_OnCall_Calendar_Events] SET '
+        values = []
+        for col in df_columns:
+            if col in row.index:
+                update_query += f'[{col}] = ?, '
+                values.append(row[col])
 
-    update_query = '''
-    UPDATE [GFT].[dbo].[CF_OnCall_Calendar_Events]
-    SET [Name] = ?,
-        [Color] = ?,
-        [Start] = ?,
-        [End] = ?,
-        [ResourceId] = ?,
-        [Region] = ?,
-        [BranchName] = ?,
-        [Email] = ?
-    WHERE [RowID] = ?
-    '''
-    for index, row in eventDf.iterrows():
-        values = (
-            row['Name'],
-            row['Color'],
-            str(row['Start']),
-            str(row['End']),
-            row['ResourceId'],
-            row['Region'],
-            row['BranchName'],
-            row['Email'],
-            row['RowID']
-        )
+        update_query = update_query.rstrip(', ')
+        update_query += ' WHERE [RowID] = ?'
+        values.append(row_id[0])
+        # print(update_query, values)
         cursor.execute(update_query, values)
         conn.commit()
-    # eventDf = eventDf.dropna()
-    # data = eventDf[['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName','Email']].values.tolist()
-    # data = [row for row in data]
-    # insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Calendar_Events] ([Name], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [Email]) VALUES (?,?,?,?,?,?,?,?)"
-    # if data:
-    #     cursor.executemany(insert_query, data)
-    #     conn.commit()
 
     sql_query = '''
         SELECT [Name]
@@ -217,59 +180,165 @@ def updateEvents(branchName, eventDf):
             ,[Region]
             ,[BranchName]
             ,[Email]
-            ,['ManagerPhone']
+            ,[ManagerPhone]
+            ,[RowID]
         FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
-        WHERE BranchName = ? 
     '''
-    cursor.execute(sql_query, (branchName),)
+    cursor.execute(sql_query)
     sql_query = cursor.fetchall()
     rows_transposed = [sql_query for sql_query in zip(*sql_query)]
-    cc = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
-      ,'Email','ManagerPhone'], rows_transposed)))
+    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+      ,'Email', 'ManagerPhone', 'RowID'], rows_transposed)))
     
-def insertEvents(branchName, eventDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    cursor.close()
+    conn.close()
+    return updatedEvent
+    
+def deleteEvents(eventDf):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
-    delete_query = "DELETE FROM [GFT].[dbo].[CF_OnCall_Calendar_Events] WHERE BranchName = ?"
-    cursor.execute(delete_query, (branchName),)
-    conn.commit()
+    delete_query = "DELETE FROM [GFT].[dbo].[CF_OnCall_Calendar_Events] WHERE RowID = ?"
+    
+    for index, row in eventDf.iterrows():
+        row_id = row["RowID"]
+        cursor.execute(delete_query, (row_id,))
+        conn.commit()
+    
+    sql_query = '''
+        SELECT [Name]
+            ,[Color]
+            ,[Start]
+            ,[End]
+            ,[ResourceId]
+            ,[Region]
+            ,[BranchName]
+            ,[Email]
+            , [ManagerPhone]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
+    '''
+    cursor.execute(sql_query)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+      ,'Email', 'ManagerPhone', 'RowID'], rows_transposed)))
+    
+    cursor.close()
+    conn.close()
+    return updatedEvent
+
+def insertEvents(eventDf):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
 
     data = eventDf[['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName','Email','ManagerPhone']].values.tolist()
     data = [row for row in data]
-    insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Calendar_Events] ([Name], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [Email],'ManagerPhone') VALUES (?,?,?,?,?,?,?,?,?)"
+    insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Calendar_Events] ([Name], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [Email], [ManagerPhone]) VALUES (?,?,?,?,?,?,?,?,?)"
     if data:
         cursor.executemany(insert_query, data)
         conn.commit()
 
-    # sql_query = '''
-    #     SELECT [Name]
-    #         ,[Color]
-    #         ,[Start]
-    #         ,[End]
-    #         ,[ResourceId]
-    #         ,[Region]
-    #         ,[BranchName]
-    #         ,[Email]
-    #         ,[RowID]
-    #     FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
-    #     WHERE BranchName = ? 
-    # '''
-    # cursor.execute(sql_query, (branchName),)
-    # sql_query = cursor.fetchall()
-    # rows_transposed = [sql_query for sql_query in zip(*sql_query)]
-    # cc = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
-    #   ,'Email', 'RowID'], rows_transposed)))
+    sql_query = '''
+        SELECT [Name]
+            ,[Color]
+            ,[Start]
+            ,[End]
+            ,[ResourceId]
+            ,[Region]
+            ,[BranchName]
+            ,[Email]
+            ,[ManagerPhone]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
+    '''
+    cursor.execute(sql_query)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+      ,'Email', 'ManagerPhone', 'RowID'], rows_transposed)))
     
-def insertContacts(branchName, contactDF):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    cursor.close()
+    conn.close()
+    return updatedEvent
+
+def updateContact(contactDF):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+    df_columns = ['BranchName', 'Name', 'Phone', 'Email', 'Team']
+
+    for row_id, row in contactDF.iterrows():
+        if(row_id[1]=='self'):
+            continue
+        update_query = f'UPDATE [GFT].[dbo].[CF_OnCall_Contact] SET '
+        values = []
+        for col in df_columns:
+            if col in row.index:
+                update_query += f'[{col}] = ?, '
+                values.append(row[col])
+
+        update_query = update_query.rstrip(', ')
+        update_query += ' WHERE [RowID] = ?'
+        values.append(row_id[0])
+        # print(update_query, values)
+        cursor.execute(update_query, values)
+        conn.commit()
+
+        sql_query = '''
+            SELECT [BranchName]
+                ,[Name]
+                ,[Phone]
+                ,[Email]
+                ,[Team]
+                ,[RowID]
+            FROM [GFT].[dbo].[CF_OnCall_Contact]
+        '''
+        cursor.execute(sql_query)
+        sql_query = cursor.fetchall()
+        rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+        updatedEvent = pd.DataFrame(dict(zip(['BranchName', 'Name', 'Phone', 'Email', 'Team', 'RowID'], rows_transposed)))
+        
+        cursor.close()
+        conn.close()
+        return updatedEvent
+
+def deleteContact(contactDf):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
-    delete_query = "DELETE FROM [GFT].[dbo].[CF_OnCall_Contact] WHERE BranchName = ?"
-    cursor.execute(delete_query, (branchName),)
-    conn.commit()
+    delete_query = "DELETE FROM [GFT].[dbo].[CF_OnCall_Contact] WHERE RowID = ?"
+    
+    for index, row in contactDf.iterrows():
+        row_id = row["RowID"]
+        cursor.execute(delete_query, (row_id,))
+        conn.commit()
+    
+    sql_query = '''
+        SELECT [BranchName]
+            ,[Name]
+            ,[Phone]
+            ,[Email]
+            ,[Team]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Contact]
+    '''
+    cursor.execute(sql_query)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    updatedEvent = pd.DataFrame(dict(zip(['BranchName', 'Name', 'Phone', 'Email', 'Team', 'RowID'], rows_transposed)))
+    
+    cursor.close()
+    conn.close()
+    return updatedEvent
+
+def insertContact(contactDF):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
 
     data = contactDF[['BranchName', 'Name', 'Phone', 'Email', 'Team']].values.tolist()
     data = [row for row in data]
@@ -278,11 +347,33 @@ def insertContacts(branchName, contactDF):
         cursor.executemany(insert_query, data)
         conn.commit()
 
+    sql_query = '''
+        SELECT [BranchName]
+            ,[Name]
+            ,[Phone]
+            ,[Email]
+            ,[Team]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Contact]
+    '''
+    cursor.execute(sql_query)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    updatedEvent = pd.DataFrame(dict(zip(['BranchName', 'Name', 'Phone', 'Email', 'Team', 'RowID'], rows_transposed)))
+    
+    cursor.close()
+    conn.close()
+    return updatedEvent
+
 st.set_page_config(page_title="On Call Schedule Calendar", page_icon="📆", layout="wide")
 
 calendar_options = {}
 if "branch" not in st.session_state:
     st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events = getAll()
+# if "contacts" not in st.session_state:
+#     st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events = getAll()
+# if "calendar_events" not in st.session_state:
+#     st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events = getAll()
 # st.write(st.session_state.branch)
 # st.write(st.session_state.contacts)
 # st.write(st.session_state.calendar_events)
@@ -296,11 +387,23 @@ if 'filtered_events' not in st.session_state:
 if 'filtered_contacts' not in st.session_state:
     mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
     st.session_state.filtered_contacts = st.session_state.contacts[mask]
+
+if 'deleterowEvent' not in st.session_state:
+    st.session_state.deleterowEvent = pd.DataFrame()
+if 'insertrowEvent' not in st.session_state:
+    st.session_state.insertrowEvent = pd.DataFrame()
+if 'updaterowEvent' not in st.session_state:
+    st.session_state.updaterowEvent = pd.DataFrame()
+if 'deleterowContact' not in st.session_state:
+    st.session_state.deleterowContact = pd.DataFrame()
+if 'insertrowContact' not in st.session_state:
+    st.session_state.insertrowContact = pd.DataFrame()
+if 'updaterowContact' not in st.session_state:
+    st.session_state.updaterowContact = pd.DataFrame()
 if 'selected_tab' not in st.session_state:
     st.session_state.selected_tab = "Calendar"
 
 st.sidebar.subheader("BranchName")
-
 # branch_names_set = set(event['BranchName'] for event in st.session_state.calendar_events)
 selected_branches = st.sidebar.multiselect("Select Branches", st.session_state.branch['BranchName'], key="select_branches")
 if selected_branches != None and selected_branches != st.session_state.selected_branches:
@@ -449,17 +552,38 @@ def event_tab():
         if st.session_state.filtered_events is None or len(st.session_state.filtered_events) == 0 :
             one_hour = timedelta(hours=1)   
             new_end_time = datetime.now() + one_hour
-            st.session_state.filtered_events = pd.DataFrame([{"Name": "", "Color": "", "Start": datetime.now(),
-            "End":  new_end_time, "ResourceId": "", 'Region':'', "BranchName":"", "Email":"@guardianfueltech.com"}])
+            newEventsDF = pd.DataFrame([{"Name": "", "Color": "", "Start": datetime.now(),
+            "End":  new_end_time, "ResourceId": "", 'Region':'', "BranchName":st.session_state.selected_branches[0], "Email":"@guardianfueltech.com", "ManagerPhone":"0000000000", "RowID":""}])
         else:
             st.session_state.filtered_events["Start"] = pd.to_datetime(st.session_state.filtered_events["Start"])
             st.session_state.filtered_events["End"] = pd.to_datetime(st.session_state.filtered_events["End"])
-        
     # with st.expander("******Add Event Form******", expanded=True):
         with st.form("add_event_form"):
             # width = 800
             # inwidth = 500
-            st.session_state.filtered_events = st.data_editor(
+            
+            # gb = GridOptionsBuilder.from_dataframe(st.session_state.filtered_events)
+            # gb.configure_column("Name",editable=True)
+            # gb.configure_column("Color",editable=True)
+            # gb.configure_column("Start",editable=True)
+            # gb.configure_column("End",editable=True)
+            # gb.configure_column("ResourceId",editable=True)
+            # gb.configure_column("Region",editable=True)
+            # gb.configure_column("BranchName",editable=True)
+            # gb.configure_column("Email",editable=True)
+            # gb.configure_column("ManagerPhone",editable=True)
+            # gridOptions = gb.build()
+
+            # # Display the AgGrid
+            # data = AgGrid(
+            #     st.session_state.filtered_events,
+            #     gridOptions=gridOptions,
+            #     enable_enterprise_modules=True,
+            #     allow_unsafe_jscode=True,
+            #     update_mode=GridUpdateMode.SELECTION_CHANGED,
+            #     columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS
+            # )
+            newEventsDF = st.data_editor(
                 st.session_state.filtered_events,
                 column_config={
                     "Name": st.column_config.TextColumn(
@@ -472,12 +596,14 @@ def event_tab():
                         help="Event Start Date",
                         format="D MMM YYYY, H:mm",
                         step=60,
+                        # width=inwidth/6,
                     ),
                     "End": st.column_config.DatetimeColumn(
                         "Event End Date",
                         help="Event End Date",
                         format="D MMM YYYY, H:mm",
                         step=60,
+                        # width=inwidth/6,
                     ),
                     "Color": st.column_config.SelectboxColumn(
                         "Event Color",
@@ -509,10 +635,17 @@ def event_tab():
                         help="Email",
                         # width=inwidth/6,
                     ),
-                    "ManagerPhone": st.column_config.TextColumn(
-                        "ManagerPhoneOnCallManagerPhone",
+                    "ManagerPhone": st.column_config.NumberColumn(
+                        "OnCallManagerPhoneNumber",
                         help="OnCallManagerPhoneNumber",
                         # width=inwidth/6,
+                        format='%s'
+                    ),
+                    "RowID": st.column_config.NumberColumn(
+                        "RowID",
+                        help="RowID",
+                        # width=inwidth/6,
+                        disabled=True
                     ),
                 },
                 hide_index=True,
@@ -526,18 +659,32 @@ def event_tab():
             calendarSubmit = st.form_submit_button("Calendar Submit")
             if calendarSubmit:
                 phone_pattern = re.compile(r'^\d{10}$')
-                if not st.session_state.filtered_events["ManagerPhone"].apply(lambda x: bool(phone_pattern.match(str(x)))).all():
-                    st.error("Invalid phone number format. Please enter a 10-digit number.")
-                else:
+                if "ManagerPhone" in st.session_state.filtered_events.columns and not st.session_state.filtered_events["ManagerPhone"].empty:
+                    if not st.session_state.filtered_events["ManagerPhone"].apply(lambda x: bool(phone_pattern.match(str(x)))).all():
+                        st.error("Invalid phone number format. Please enter a 10-digit number.")
+                
+                mask = st.session_state.calendar_events['BranchName'].isin(st.session_state.selected_branches)
+                originbranchdata = st.session_state.calendar_events[mask]
+                if(len(originbranchdata)!=0):
                     if all(isinstance(value, pd.Timestamp) for value in st.session_state.filtered_events["End"]):
                         st.session_state.filtered_events["Start"] = st.session_state.filtered_events["Start"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")
                         st.session_state.filtered_events["End"] = st.session_state.filtered_events["End"].dt.strftime("%Y-%m-%d %H:%M:%S.%f")    
+                    
+                    insert_condition = newEventsDF["RowID"].isna()
+                    st.session_state.insertrowEvent = newEventsDF[insert_condition]
 
+                    delete_condition = ~originbranchdata["RowID"].isin(newEventsDF["RowID"])
+                    st.session_state.deleterowEvent = originbranchdata[delete_condition]
+                    # st.write(delete_condition,originbranchdata,originbranchdata[~delete_condition],newEventsDF[~insert_condition])
+                    st.session_state.updaterowEvent = originbranchdata[~delete_condition].set_index('RowID').compare(newEventsDF[~insert_condition].set_index('RowID'), align_axis='index')
+                else:
+                    st.session_state.insertrowEvent = newEventsDF
+                st.write("origin", originbranchdata,"updateevent", st.session_state.updaterowEvent, "insertevent", st.session_state.insertrowEvent, "deleteevent", st.session_state.deleterowEvent)
+                st.session_state.filtered_events = newEventsDF
                 with st.spinner("please wait"):
-                    time.sleep(1)
-                st.session_state.changed = True    
+                    time.sleep(10)
+                    st.session_state.changed = True    
                 st.experimental_rerun()
-
 def contact_tab():
     # with st.expander("******Edit Contact Form******", expanded=True):
         if len(st.session_state.filtered_contacts) == 0:
@@ -545,7 +692,7 @@ def contact_tab():
         with st.form(key="edit_contact_form"):
             # width = 800
             # inwidth = 500
-            st.session_state.filtered_contacts = st.data_editor(
+            newContactDF = st.data_editor(
                 st.session_state.filtered_contacts,
                 column_config={
                     "BranchName": st.column_config.TextColumn(
@@ -591,7 +738,22 @@ def contact_tab():
             contactsSubmit = st.form_submit_button("Contacts Submit")
             if not st.session_state.filtered_contacts.empty:
                 if contactsSubmit:
-                    st.session_state.changed = True
+                    mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
+                    originbranchdata = st.session_state.contacts[mask]
+                    if(len(originbranchdata)!=0):
+                        insert_condition = newContactDF["RowID"].isna()
+                        st.session_state.insertrowContact = newContactDF[insert_condition]
+
+                        delete_condition = ~originbranchdata["RowID"].isin(newContactDF["RowID"])
+                        st.session_state.deleterowContact = originbranchdata[delete_condition]
+                        st.session_state.updaterowContact = originbranchdata[~delete_condition].set_index('RowID').compare(newContactDF[~insert_condition].set_index('RowID'), align_axis='index')
+                    else:
+                        st.session_state.insertrowContact = newContactDF
+                    st.write("break here \n origin", originbranchdata,"updateContact", st.session_state.updaterowContact, "insertContact", st.session_state.insertrowContact, "deleteContact", st.session_state.deleterowContact)
+                    st.session_state.filtered_contacts = newContactDF
+                    with st.spinner("please wait"):
+                        time.sleep(10)
+                        st.session_state.changed = True
                     st.experimental_rerun()
 
 def simulate_operation(duration, description):
@@ -610,7 +772,6 @@ def call_tab():
         simulate_operation(15, "Sending out message")
         simulate_operation(900, "Waiting for technician to reply")
         simulate_operation(1500, "Elevate to manager reply overtime")
-
 
 
 if st.sidebar.button("AssignCall"):
@@ -638,27 +799,44 @@ else:
         st.sidebar.error("Can't edit with multiple selected branches! Please select one branch only")
         st.error("Can't edit with multiple selected branches! Please select one branch only")
     else:
+        if st.session_state.changed:
+            st.sidebar.success("Caution! Pressing this button will update both contacts and events in database.")
+            if st.sidebar.button("Update to database"):
+                if len(st.session_state.insertrowEvent)>0:
+                    st.session_state.calendar_events = insertEvents(st.session_state.insertrowEvent)
+                if len(st.session_state.deleterowEvent)>0:
+                    st.session_state.calendar_events = deleteEvents(st.session_state.deleterowEvent)
+                if len(st.session_state.updaterowEvent)>0:
+                    st.session_state.calendar_events = updateEvents(st.session_state.updaterowEvent)
+                
+                if len(st.session_state.insertrowContact)>0:
+                    st.session_state.contacts = insertContact(st.session_state.insertrowContact)
+                if len(st.session_state.deleterowContact)>0:
+                    st.session_state.contacts = deleteContact(st.session_state.deleterowContact)
+                if len(st.session_state.updaterowContact)>0:
+                    st.session_state.contacts = updateContact(st.session_state.updaterowContact)
+
+                mask = st.session_state.calendar_events['BranchName'].isin(st.session_state.selected_branches)    
+                st.session_state.filtered_events = pd.DataFrame(columns=st.session_state.calendar_events.columns)
+                st.session_state.filtered_events = pd.concat(
+                [st.session_state.filtered_events, st.session_state.calendar_events[mask]],
+                ignore_index=True)
+
+                mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
+                st.session_state.filtered_contacts = pd.DataFrame(columns=st.session_state.contacts.columns)
+                st.session_state.filtered_contacts = pd.concat(
+                [st.session_state.filtered_contacts, st.session_state.contacts[mask]],
+                ignore_index=True
+                )
+                csv = createCsv()
+                st.session_state.changed = False
+                st.experimental_rerun()
+        
         if st.session_state.selected_tab == "Edit Calendar":
             event_tab()
         if st.session_state.selected_tab == "Edit Contact":
             contact_tab()
         if st.session_state.selected_tab == "Show Calls":
             call_tab()
-        if st.session_state.changed:
-            st.sidebar.success("Caution! Pressing this button will update both contacts and events in database.")
-            if st.sidebar.button("Update to database"):
-                if not st.session_state.filtered_events.empty and not (
-                    st.session_state.filtered_events["Name"].iloc[0] == "" or
-                    st.session_state.filtered_events["Color"].iloc[0] == "" or
-                    st.session_state.filtered_events["ResourceId"].iloc[0] == "" or
-                    st.session_state.filtered_events["Region"].iloc[0] == "" or
-                    st.session_state.filtered_events["Email"].iloc[0] == "@guardianfueltech.com"):
-                    insertEvents(st.session_state.selected_branches, st.session_state.filtered_events)
-                if not st.session_state.filtered_contacts.empty and not (
-                    st.session_state.filtered_contacts["Name"].iloc[0] == "" or
-                    st.session_state.filtered_contacts["Phone"].iloc[0] == "0000000000" or
-                    st.session_state.filtered_contacts["Email"].iloc[0] == "@guardianfueltech.com" or
-                    st.session_state.filtered_contacts["Team"].iloc[0] == ""):
-                    insertContacts(st.session_state.selected_branches, st.session_state.filtered_contacts)
-                csv = createCsv()
-                st.session_state.changed = False
+                
+

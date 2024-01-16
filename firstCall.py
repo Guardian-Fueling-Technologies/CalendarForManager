@@ -54,7 +54,7 @@ def assignCall(account_sid, auth_token, assignQuestion, tech_phone_number,twilio
                 call = client.calls.create(
                     to=tech_phone_number,
                     from_="+18556258756",
-                    url=f"https://handler.twilio.com/twiml/EHde6244b9fd963fe81b6c0fc467d07740?Name=Charlie&Date={message_timestamp_str}"
+                    url="https://twilliocall.guardianfueltech.com/voice"
                 )
     #             <Gather numDigits="1" action="/handle-key" method="POST">
     #     <Say>To accept the call, press 1. To decline the call, press 2.</Say>
@@ -66,13 +66,23 @@ def assignCall(account_sid, auth_token, assignQuestion, tech_phone_number,twilio
                 latest_response.body.lower() == yes3CharWord
                 and latest_response.date_sent > message_timestamp
             ):
+                message = client.messages.create(
+                    body=f" you have accepted the call. Thank you",
+                    from_=twilio_number,
+                    to=tech_phone_number
+                )
                 print("Tech accepted the call.")
                 return 1, message_timestamp, latest_response.date_sent
                 break 
             elif (
                 latest_response.body.lower() == no3CharWord
                 and latest_response.date_sent > message_timestamp
-            ):
+            ):                
+                message = client.messages.create(
+                    body=f" you have declined the call. Thank you",
+                    from_=twilio_number,
+                    to=tech_phone_number
+                )
                 print("Tech declined the call.")
                 return 0, message_timestamp, latest_response.date_sent
                 break
