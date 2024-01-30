@@ -19,9 +19,7 @@ account_sid = os.environ.get("account_sid")
 auth_token = os.environ.get("auth_token")
 
 def createCsv():
-    # check time zone
-    today = datetime.now()
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     
@@ -30,6 +28,7 @@ def createCsv():
       ,[Color]
       ,CAST([Start] AS NVARCHAR(MAX)) AS StartString
       ,CAST([End] AS NVARCHAR(MAX)) AS EndString
+      ,[Technician_ID]
       ,[ResourceId]
       ,[Region]
       ,[BranchName]
@@ -44,7 +43,7 @@ def createCsv():
     cursor.execute(sql_query)
     result = cursor.fetchall()
     data = [list(row) for row in result]
-    eventDf = pd.DataFrame(data, columns=['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone'])
+    eventDf = pd.DataFrame(data, columns=['Name', 'Color', 'Start', 'End', 'Technician_ID', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone'])
 
     sql_query = '''
         SELECT [BranchName]
@@ -64,11 +63,9 @@ def createCsv():
     cursor.close()
     conn.close()
 
-
     if(len(contactDf)!=0):
         merged_df = pd.merge(contactDf, eventDf, on="Email", how="inner", suffixes=('_contact', '_event'))
         # merged_df = pd.merge(contactDf, eventDf, on="Email", how="inner")
-        # print(merged_df)
 
         with open("assignCall.csv", mode='w', newline='') as file:
             fieldnames = ["account_sid", "auth_token", "assignMessage", "tech_phone_number", "twilio_number", "assigned", "technician_manager_phone"]
@@ -93,13 +90,13 @@ def createCsv():
 
 def run_assignCall_app():
     try:
-        result = subprocess.run(['python', 'firstCall.py'], capture_output=True, text=True, check=True)
+        result = subprocess.run(['python', '../../twillioassigncall/firstCall.py'], capture_output=True, text=True, check=True)
         return result.stdout
     except subprocess.CalledProcessError as e:
         return e.stderr
-    
+
 def getAll():
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -117,6 +114,7 @@ def getAll():
       ,[Color]
       ,CAST([Start] AS NVARCHAR(MAX)) AS StartString
       ,CAST([End] AS NVARCHAR(MAX)) AS EndString
+      ,[Technician_ID]
       ,[ResourceId]
       ,[Region]
       ,[BranchName]
@@ -128,7 +126,7 @@ def getAll():
     cursor.execute(sql_query)
     result = cursor.fetchall()
     data = [list(row) for row in result]
-    eventDf = pd.DataFrame(data, columns=['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone',"RowID"])
+    eventDf = pd.DataFrame(data, columns=['Name', 'Color', 'Start', 'End', 'Technician_ID', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone',"RowID"])
 
     sql_query = '''
         SELECT [BranchName]
@@ -144,15 +142,27 @@ def getAll():
     data = [list(row) for row in result]
     contactDf = pd.DataFrame(data, columns=['BranchName', 'Name', 'Phone', 'Email', 'Team',"RowID"])
 
-    cursor.close()
-    conn.close()
-    return branchDf, contactDf, eventDf
-
-def updateEvents(eventDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
-    df_columns = ['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone']
+    sql_query = '''
+        Exec CF_P_TechID
+        '''    
+    cursor.execute(sql_query)
+    result = cursor.fetchall()
+    data = [list(row) for row in result]
+    columns = [column[0] for column in cursor.description]
+    IdDf = pd.DataFrame(data, columns=columns)
+
+    cursor.close()
+    conn.close()
+    return branchDf, contactDf, eventDf, IdDf
+
+def updateEvents(eventDf):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+    df_columns = ['Name', 'Color', 'Start', 'End', 'Technician_ID', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone']
 
     for row_id, row in eventDf.iterrows():
         if(row_id[1]=='self'):
@@ -176,6 +186,7 @@ def updateEvents(eventDf):
             ,[Color]
             ,[Start]
             ,[End]
+            ,[Technician_ID]
             ,[ResourceId]
             ,[Region]
             ,[BranchName]
@@ -187,7 +198,7 @@ def updateEvents(eventDf):
     cursor.execute(sql_query)
     sql_query = cursor.fetchall()
     rows_transposed = [sql_query for sql_query in zip(*sql_query)]
-    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'Technician_ID', 'ResourceId', 'Region', 'BranchName'
       ,'Email', 'ManagerPhone', 'RowID'], rows_transposed)))
     
     cursor.close()
@@ -195,7 +206,7 @@ def updateEvents(eventDf):
     return updatedEvent
     
 def deleteEvents(eventDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -211,41 +222,7 @@ def deleteEvents(eventDf):
             ,[Color]
             ,[Start]
             ,[End]
-            ,[ResourceId]
-            ,[Region]
-            ,[BranchName]
-            ,[Email]
-            , [ManagerPhone]
-            ,[RowID]
-        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
-    '''
-    cursor.execute(sql_query)
-    sql_query = cursor.fetchall()
-    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
-    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
-      ,'Email', 'ManagerPhone', 'RowID'], rows_transposed)))
-    
-    cursor.close()
-    conn.close()
-    return updatedEvent
-
-def insertEvents(eventDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
-    conn = pyodbc.connect(conn_str)
-    cursor = conn.cursor()
-
-    data = eventDf[['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName','Email','ManagerPhone']].values.tolist()
-    data = [row for row in data]
-    insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Calendar_Events] ([Name], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [Email], [ManagerPhone]) VALUES (?,?,?,?,?,?,?,?,?)"
-    if data:
-        cursor.executemany(insert_query, data)
-        conn.commit()
-
-    sql_query = '''
-        SELECT [Name]
-            ,[Color]
-            ,[Start]
-            ,[End]
+            ,[Technician_ID]
             ,[ResourceId]
             ,[Region]
             ,[BranchName]
@@ -257,7 +234,43 @@ def insertEvents(eventDf):
     cursor.execute(sql_query)
     sql_query = cursor.fetchall()
     rows_transposed = [sql_query for sql_query in zip(*sql_query)]
-    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName'
+    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'Technician_ID', 'ResourceId', 'Region', 'BranchName'
+      ,'Email', 'ManagerPhone', 'RowID'], rows_transposed)))
+    
+    cursor.close()
+    conn.close()
+    return updatedEvent
+
+def insertEvents(eventDf):
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+
+    data = eventDf[['Name', 'Color', 'Start', 'End', 'Technician_ID', 'ResourceId', 'Region', 'BranchName','Email','ManagerPhone']].values.tolist()
+    data = [row for row in data]
+    insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Calendar_Events] ([Name], [Color], [Start], [End], [Technician_ID], [ResourceId], [Region], [BranchName], [Email], [ManagerPhone]) VALUES (?,?,?,?,?,?,?,?,?)"
+    if data:
+        cursor.executemany(insert_query, data)
+        conn.commit()
+
+    sql_query = '''
+        SELECT [Name]
+            ,[Color]
+            ,[Start]
+            ,[End]
+            ,[Technician_ID]
+            ,[ResourceId]
+            ,[Region]
+            ,[BranchName]
+            ,[Email]
+            ,[ManagerPhone]
+            ,[RowID]
+        FROM [GFT].[dbo].[CF_OnCall_Calendar_Events]
+    '''
+    cursor.execute(sql_query)
+    sql_query = cursor.fetchall()
+    rows_transposed = [sql_query for sql_query in zip(*sql_query)]
+    updatedEvent = pd.DataFrame(dict(zip(['Name', 'Color', 'Start', 'End', 'Technician_ID','ResourceId', 'Region', 'BranchName'
       ,'Email', 'ManagerPhone', 'RowID'], rows_transposed)))
     
     cursor.close()
@@ -265,7 +278,7 @@ def insertEvents(eventDf):
     return updatedEvent
 
 def updateContact(contactDF):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     df_columns = ['BranchName', 'Name', 'Phone', 'Email', 'Team']
@@ -306,7 +319,7 @@ def updateContact(contactDF):
         return updatedEvent
 
 def deleteContact(contactDf):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -336,7 +349,7 @@ def deleteContact(contactDf):
     return updatedEvent
 
 def insertContact(contactDF):
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -369,7 +382,7 @@ st.set_page_config(page_title="On Call Schedule Calendar", page_icon="📆", lay
 
 calendar_options = {}
 if "branch" not in st.session_state:
-    st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events = getAll()
+    st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events, st.session_state.IdDf = getAll()
 # if "contacts" not in st.session_state:
 #     st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events = getAll()
 # if "calendar_events" not in st.session_state:
@@ -387,6 +400,9 @@ if 'filtered_events' not in st.session_state:
 if 'filtered_contacts' not in st.session_state:
     mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
     st.session_state.filtered_contacts = st.session_state.contacts[mask]
+if 'filtered_IDs' not in st.session_state:
+    mask = st.session_state.IdDf['BranchName'].isin(st.session_state.selected_branches)
+    st.session_state.filtered_IDs = st.session_state.IdDf[mask]
 
 if 'deleterowEvent' not in st.session_state:
     st.session_state.deleterowEvent = pd.DataFrame()
@@ -418,9 +434,14 @@ if selected_branches != None and selected_branches != st.session_state.selected_
     st.session_state.filtered_contacts = pd.DataFrame(columns=st.session_state.contacts.columns)
     st.session_state.filtered_contacts = pd.concat(
     [st.session_state.filtered_contacts, st.session_state.contacts[mask]],
+    ignore_index=True)
+
+    mask = st.session_state.IdDf['BranchName'].isin(st.session_state.selected_branches)
+    st.session_state.filtered_IDs = pd.DataFrame(columns=st.session_state.IdDf.columns)
+    st.session_state.filtered_IDs = pd.concat(
+    [st.session_state.filtered_IDs, st.session_state.IdDf[mask]],
     ignore_index=True
 )
-
 
 # display to beinformed
 # st.write(st.session_state.selected_branches)
@@ -583,8 +604,9 @@ def event_tab():
             #     update_mode=GridUpdateMode.SELECTION_CHANGED,
             #     columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS
             # )
+            newEventsDF = pd.DataFrame(st.session_state.filtered_events, columns=['Technician_ID', 'Color', 'Start', 'End', 'Name', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone'])
             newEventsDF = st.data_editor(
-                st.session_state.filtered_events,
+                newEventsDF,
                 column_config={
                     "Name": st.column_config.TextColumn(
                         "Name",
@@ -610,6 +632,13 @@ def event_tab():
                         help="Event Color",
                         # width=inwidth/6,
                         options= ["blue", "orange", "red", "purple", "darkgreen", "gold", "magenta"]
+                    ),                    
+                    # techid alphabetical order st.session_state.filtered_IDs["Technician_ID"].tolist()
+                    "Technician_ID": st.column_config.SelectboxColumn(
+                        "Technician_ID",
+                        help="Technician_ID",
+                        # width=inwidth/6,
+                        options= st.session_state.filtered_IDs["Technician_ID"].tolist()
                     ),
                     "ResourceId": st.column_config.SelectboxColumn(
                         "Resource ID",
@@ -653,6 +682,7 @@ def event_tab():
                 num_rows="dynamic",
                 key="addCalendar"
             )
+            newEventsDF = newEventsDF.dropna()
 
             st.error("PLEASE do not submit 00:00:00 midnight!")
             st.warning("Kindly reminder, this Button will temporarily store on your device")
@@ -734,6 +764,7 @@ def contact_tab():
                 num_rows="dynamic",
                 key="editContacts"
             )
+
             st.warning("Kindly reminder, this Button will temporarily store on your device")
             contactsSubmit = st.form_submit_button("Contacts Submit")
             if not st.session_state.filtered_contacts.empty:
@@ -757,22 +788,23 @@ def contact_tab():
                     st.experimental_rerun()
 
 def simulate_operation(duration, description):
-    progress_text = f"{description}. Please wait."
-    spinner = st.spinner(progress_text)
-    for percent_complete in range(100):
+    progress_text = f"{description}. Please wait. {duration/60} mins"
+    st.text(progress_text)
+    progress_bar = st.progress(0)
+    for percent_complete in range(1, 101):
         time.sleep(duration / 100)
-        spinner.info(f"{percent_complete + 1}% {progress_text}")
+        progress_bar.progress(percent_complete)
 
 def call_tab():
     df = pd.read_csv("assignCall.csv")
     st.table(df)
-
     for index, row in df.iterrows():
-        st.subheader(f"Processing Row {row}")
+        st.subheader(f"Processing Row {row['tech_phone_number']}")
         simulate_operation(15, "Sending out message")
         simulate_operation(900, "Waiting for technician to reply")
-        simulate_operation(1500, "Elevate to manager reply overtime")
-
+        simulate_operation(15, "Calling Technician")
+        simulate_operation(900, "Waiting for technician to reply")
+        simulate_operation(15, "Elevate to manager reply overtime")
 
 if st.sidebar.button("AssignCall"):
     flask_thread = threading.Thread(target=run_assignCall_app)
@@ -780,9 +812,6 @@ if st.sidebar.button("AssignCall"):
     st.success("call has send!")
     time.sleep(1)
     st.experimental_rerun()
-
-# flask_thread = threading.Thread(target=run_flask_app)
-# flask_thread.start()
 
 if 'flask_thread' in st.session_state:
     output = st.session_state.flask_thread
@@ -838,5 +867,8 @@ else:
             contact_tab()
         if st.session_state.selected_tab == "Show Calls":
             call_tab()
+                
+
+
                 
 
