@@ -4,9 +4,9 @@ import streamlit as st
 import pandas as pd
 import time
 import pyodbc
+import re
 import subprocess
 import threading
-import re
 import csv
 import os
 
@@ -18,8 +18,9 @@ SQLaddress = os.environ.get("addressGFT")
 account_sid = os.environ.get("account_sid")
 auth_token = os.environ.get("auth_token")
 
+
 def createCsv():
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     
@@ -96,7 +97,7 @@ def run_assignCall_app():
         return e.stderr
 
 def getAll():
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -142,7 +143,7 @@ def getAll():
     data = [list(row) for row in result]
     contactDf = pd.DataFrame(data, columns=['BranchName', 'Name', 'Phone', 'Email', 'Team',"RowID"])
 
-    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     sql_query = '''
@@ -159,7 +160,7 @@ def getAll():
     return branchDf, contactDf, eventDf, IdDf
 
 def updateEvents(eventDf):
-    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     df_columns = ['Name', 'Color', 'Start', 'End', 'Technician_ID', 'ResourceId', 'Region', 'BranchName', 'Email', 'ManagerPhone']
@@ -206,7 +207,7 @@ def updateEvents(eventDf):
     return updatedEvent
     
 def deleteEvents(eventDf):
-    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -242,7 +243,7 @@ def deleteEvents(eventDf):
     return updatedEvent
 
 def insertEvents(eventDf):
-    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -278,7 +279,7 @@ def insertEvents(eventDf):
     return updatedEvent
 
 def updateContact(contactDF):
-    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
     df_columns = ['BranchName', 'Name', 'Phone', 'Email', 'Team']
@@ -319,7 +320,7 @@ def updateContact(contactDF):
         return updatedEvent
 
 def deleteContact(contactDf):
-    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -349,7 +350,7 @@ def deleteContact(contactDf):
     return updatedEvent
 
 def insertContact(contactDF):
-    conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    conn_str = f"DRIVER={SQLaddress};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -867,8 +868,5 @@ else:
             contact_tab()
         if st.session_state.selected_tab == "Show Calls":
             call_tab()
-                
-
-
                 
 
