@@ -17,7 +17,6 @@ password = os.environ.get("passwordGFT")
 SQLaddress = os.environ.get("addressGFT")
 account_sid = os.environ.get("account_sid")
 auth_token = os.environ.get("auth_token")
-
 def getEvent(cursor):
     selectQuery = '''
        SELECT [Technician_ID], [DisplayName], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [RowID]
@@ -31,7 +30,7 @@ def getEvent(cursor):
 
 def getContact(cursor):
     selectQuery = '''
-        SELECT [Technician_ID], [Name], [Phone], [Email], [Group_ID], [Manager_email], [BranchName], [RowID]
+        SELECT [Technician_ID], [Role], [Name], [Phone], [Email], [Group_ID], [Region], [BranchName], [RowID]
         FROM [GFT].[dbo].[CF_OnCall_Contact] WITH(NOLOCK);
     '''
     cursor.execute(selectQuery)
@@ -165,7 +164,7 @@ def insertEvents(eventDf):
 
 def updateContact(contactDF):
     conn, cursor = createCursor()
-    df_columns = ["Technician_ID", "Name", "Phone", "Email", "Group_ID", "Manager_email", "BranchName", "RowID"]
+    df_columns = ["Technician_ID", "Role", "Name", "Phone", "Email", "Group_ID", "Manager_email", "Region", "BranchName", "RowID"]
 
     for row_id, row in contactDF.iterrows():
         if(row_id[1]=='self'):
@@ -180,7 +179,6 @@ def updateContact(contactDF):
         update_query = update_query.rstrip(', ')
         update_query += ' WHERE [RowID] = ?'
         values.append(row_id[0])
-        # print(update_query, values)
         cursor.execute(update_query, values)
         conn.commit()
         
@@ -205,9 +203,9 @@ def deleteContact(contactDf):
 
 def insertContact(contactDF):
     conn, cursor = createCursor()
-    data = contactDF[["Technician_ID", "Name", "Phone", "Email", "Group_ID", "Manager_email", "BranchName"]].values.tolist()
+    data = contactDF[["Technician_ID", "Role", "Name", "Phone", "Email", "Group_ID", "Region", "BranchName"]].values.tolist()
     data = [row for row in data]
-    insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Contact] WITH(ROWLOCK) ([Technician_ID], [Name], [Phone], [Email], [Group_ID], [Manager_email], [BranchName]) VALUES (?,?,?,?,?,?,?);"
+    insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Contact] WITH(ROWLOCK) ([Technician_ID], [Role], [Name], [Phone], [Email], [Group_ID], [Region], [BranchName]) VALUES (?,?,?,?,?,?,?);"
     if data:
         cursor.executemany(insert_query, data)
         conn.commit()
@@ -217,31 +215,40 @@ def insertContact(contactDF):
     conn.close()
     return contactDf
 
+def updateEscalation(flowDf):  
+    conn, cursor = createCursor()
+    delete_query = "DELETE FROM [GFT].[dbo].[MR_OnCall_Escalation] WITH(ROWLOCK) WHERE Branch = ?"
+    cursor.execute(delete_query, st.session_state.selected_branches[0])
+    conn.commit()
+
+    
+    data = flowDf[["Action", "Role", "Branch", "Region", "Escalation_Order"]].values.tolist()
+    insert_query = """
+        INSERT INTO [GFT].[dbo].[MR_OnCall_Escalation] WITH(ROWLOCK) ([Action], [Role], [Branch], [Region], [Escalation_Order])
+        VALUES (?, ?, ?, ?, ?)
+    """
+    if data:
+        cursor.executemany(insert_query, data)
+        conn.commit()
+        
+    cursor.close()
+    conn.close()
+
 st.set_page_config(page_title="On Call Schedule Calendar", page_icon="📆", layout="wide")
 
 calendar_options = {}
 if "branch" not in st.session_state:
     st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events, st.session_state.IdDf = getAll()
-# if "contacts" not in st.session_state:
-#     st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events, st.session_state.IdDf = getAll()
-# if "calendar_events" not in st.session_state:
-#     st.session_state.branch, st.session_state.contacts, st.session_state.calendar_events, st.session_state.IdDf = getAll()
-# st.write(st.session_state.branch)
-# st.write(st.session_state.contacts)
-# st.write(st.session_state.calendar_events)
 if 'changed' not in st.session_state:
     st.session_state.changed = False
 if 'selected_branches' not in st.session_state:
     st.session_state.selected_branches = ['Atlanta']
 if 'filtered_events' not in st.session_state:
-    mask = st.session_state.calendar_events['BranchName'].isin(st.session_state.selected_branches)
-    st.session_state.filtered_events = st.session_state.calendar_events[mask]
+    st.session_state.filtered_events = None
 if 'filtered_contacts' not in st.session_state:
-    mask = st.session_state.contacts['BranchName'].isin(st.session_state.selected_branches)
-    st.session_state.filtered_contacts = st.session_state.contacts[mask]
+    st.session_state.filtered_contacts = None
 if 'filtered_IDs' not in st.session_state:
-    mask = st.session_state.IdDf['BranchName'].isin(st.session_state.selected_branches)
-    st.session_state.filtered_IDs = st.session_state.IdDf[mask]
+    st.session_state.filtered_IDs = None
 
 if 'deleterowEvent' not in st.session_state:
     st.session_state.deleterowEvent = pd.DataFrame()
@@ -289,7 +296,7 @@ if selected_branches != None and selected_branches != st.session_state.selected_
 # st.write(st.session_state.filtered_events)
 # st.write(st.session_state.filtered_contacts)
 prev_selected_tab = st.session_state.selected_tab
-st.session_state.selected_tab = st.sidebar.radio("Select Tab", ("Calendar", "Edit Calendar", "Edit Contact"))
+st.session_state.selected_tab = st.sidebar.radio("Select Tab", ("Calendar", "Edit Calendar", "Edit Contact", "Escalation"))
 if st.session_state.selected_tab != prev_selected_tab:
     st.experimental_rerun()
 
@@ -542,7 +549,7 @@ def event_tab():
 def contact_tab():
     # with st.expander("******Edit Contact Form******", expanded=True):
         if len(st.session_state.filtered_contacts) == 0:
-            st.session_state.filtered_contacts = pd.DataFrame([{'BranchName':st.session_state.selected_branches[0], "Name": "", "Phone": "0000000000", "Email": "@guardianfueltech.com", "Team": "", "RowID":""}])
+            st.session_state.filtered_contacts = pd.DataFrame([{'Technician_ID':"", "Role":"","Name": "", "Phone": "0000000000", "Email": "@guardianfueltech.com", "Group_ID":"", 'BranchName':st.session_state.selected_branches[0], "Team": "", "RowID":""}])
         with st.form(key="edit_contact_form"):
             # width = 800
             # inwidth = 500
@@ -555,6 +562,12 @@ def contact_tab():
                         # width=inwidth/6,
                         default=st.session_state.selected_branches[0],
                         disabled=True
+                    ),
+                    "Role": st.column_config.SelectboxColumn(
+                        "Role",
+                        help="Role",
+                        # width=inwidth/6,
+                        options=["Lead", "Back-Up", "FSM", "SM", "BM", "RM"]
                     ),
                     "Name": st.column_config.TextColumn(
                         "Name",
@@ -582,6 +595,12 @@ def contact_tab():
                         help="Group_ID",
                         # width=inwidth/6,
                     ),
+                    "Region": st.column_config.SelectboxColumn(
+                        "Region",
+                        help="Region",
+                        # width=inwidth/6,
+                        options= ["North", "South", "None"]
+                    ),
                     "RowID": st.column_config.NumberColumn(
                         "RowID",
                         help="RowID",
@@ -597,7 +616,6 @@ def contact_tab():
 
             columns_to_check = newContactDF.columns.difference(['RowID', 'Group_ID'])
             newContactDF = newContactDF.dropna(subset=columns_to_check)
-            print(newContactDF)
 
             st.warning("Kindly reminder, this Button will temporarily store on your device")
             contactsSubmit = st.form_submit_button("Contacts Submit")
@@ -620,6 +638,180 @@ def contact_tab():
                         time.sleep(10)
                         st.session_state.changed = True
                     st.experimental_rerun()
+# for flow tab
+# def add_row(df, grid, row, branch, region):
+#     with grid[0]:
+#         actionOption = ("Message", "Call")
+#         actionIndex = actionOption.index(df.iloc[0]["Action"])
+#         action = st.selectbox('Action', actionOption, key=f'action{row}', index = actionIndex)
+#     with grid[1]:
+#         roleOption = ("Message", "Call")
+#         roleIndex = actionOption.index(df.iloc[0]["Action"])
+#         roleName = st.text_input('Role', key=f'Role{row}', index = df.iloc[0]["Role"])
+#     df_row = pd.DataFrame({'Action': action, 'Action Role': roleName, 'Number': phone, 'Branch': branch, 'Region': region})
+#     df = pd.concat([df, df_row], ignore_index=True)
+#     return df
+
+def flow_tab():
+    if "login" not in st.session_state:
+        st.session_state.login = False
+    if "flowUser" not in st.session_state:
+        st.session_state.flowUser = ""
+    if "flowPass" not in st.session_state:
+        st.session_state.flowPass = ""
+    conn, cursor = createCursor()
+
+    sql_query = '''SELECT [Action], [Role], [Branch], [Region], [Escalation_Order], [RowID]
+        FROM [GFT].[dbo].[MR_OnCall_Escalation] WITH (NOLOCK)
+        WHERE [Branch] = ?
+        '''
+
+    cursor.execute(sql_query, selected_branches)
+    result = cursor.fetchall()
+    rows_transposed = [result for result in zip(*result)]
+    flowDf = pd.DataFrame(dict(zip(['Action', 'Role', 'Branch', 'Region', 'Escalation_Order','RowID'], rows_transposed)))
+    
+    with st.expander("View", expanded=True):
+        flowDf = st.data_editor(
+            flowDf,
+            column_config={
+                "Role": st.column_config.SelectboxColumn(
+                    "Role",
+                    help="Role",
+                    options=["Lead", "Back-Up", "FSM", "SM", "BM", "RM"],
+                    disabled=True
+                ),
+                "Action": st.column_config.SelectboxColumn(
+                    "Action",
+                    help="Action",
+                    options=["Message", "Call"],
+                    disabled=True
+                ),
+                "Branch": st.column_config.TextColumn(
+                    "Branch",
+                    help="Branch",
+                    default=st.session_state.selected_branches[0],
+                    disabled=True
+                ),
+                "Region": st.column_config.SelectboxColumn(
+                    "Region",
+                    help="Region",
+                    options=["North", "South", "None"],
+                    disabled=True
+                ),
+                "Escalation_Order": st.column_config.SelectboxColumn(
+                    "Escalation_Order",
+                    help="Escalation_Order",
+                    disabled=True
+                ),
+                "RowID": st.column_config.NumberColumn(
+                    "RowID",
+                    help="RowID",
+                    disabled=True
+                ),
+            },
+            hide_index=True,
+            width=750,
+            key="view"
+        )
+    
+    if st.session_state.login or st.session_state.flowUser == flowUsername and st.session_state.flowPass == flowPassword:
+        st.session_state.login = True
+        if(len(flowDf)==0):            
+            flowDf = pd.DataFrame([{'Role':"", "Action": "", "Branch": st.session_state.selected_branches[0], "Region": "", "Escalation_Order":"", "RowID":""}])
+        with st.form(key="edit_contact_form"):
+            flowDf = st.data_editor(
+                flowDf,
+                column_config={
+                    "Role": st.column_config.SelectboxColumn(
+                        "Role",
+                        help="Role",
+                        # width=inwidth/6,
+                        options=["Lead", "Back-Up", "FSM", "SM", "BM", "RM"]
+                    ),
+                    "Action": st.column_config.SelectboxColumn(
+                        "Action",
+                        help="Action",
+                        # width=inwidth/6,
+                        options=["Message", "Call"]
+                    ),
+                    "Branch": st.column_config.TextColumn(
+                        "Branch",
+                        help="Branch",
+                        # width=inwidth/6,
+                        default=st.session_state.selected_branches[0],
+                        disabled=True
+                    ),
+                    "Region": st.column_config.SelectboxColumn(
+                        "Region",
+                        help="Region",
+                        # width=inwidth/6,
+                        options= ["North", "South", "None"]
+                    ),
+                    "Escalation_Order": st.column_config.SelectboxColumn(
+                        "Escalation_Order",
+                        help="Escalation_Order",
+                        # width=inwidth/6,
+                        disabled=True
+                    ),
+                    "RowID": st.column_config.NumberColumn(
+                        "RowID",
+                        help="RowID",
+                        # width=inwidth/6,
+                        disabled=True
+                    ),
+                },
+                hide_index=True,
+                num_rows="dynamic",
+                key="editContacts"
+            )
+            st.warning("Kindly reminder, this Button will directly update the database")
+            escalationSubmit = st.form_submit_button("Escalation Submit")
+            if not st.session_state.filtered_contacts.empty and escalationSubmit:
+                for region in flowDf["Region"].unique():
+                    region_contacts = flowDf[flowDf["Region"] == region]
+                    num_contacts = len(region_contacts)
+                    escalation_order = [str(i) for i in range(1, num_contacts + 1)]
+                    flowDf.loc[flowDf["Region"] == region, "Escalation_Order"] = escalation_order
+                st.write(flowDf)
+
+
+                updateEscalation(flowDf)
+                st.experimental_rerun()
+            # num_rows = st.slider('Number of rows', min_value=3, max_value=15)
+            
+            # columns = ['Action', 'Action Name', 'Number', 'Branch', 'Region', 'Escalation_Order']
+            # df = pd.DataFrame(columns=columns)
+                
+            # st.write(f"Branch: {st.session_state.select_branches} Region: North")
+            # grid = st.columns(3)
+            # for r in range(num_rows):
+            #     df = add_row(df, grid, r, st.session_state.select_branches, 'North')
+            # st.write(f"Branch: {st.session_state.select_branches} Region: South")
+            # grid = st.columns(3)
+            # for r in range(num_rows, num_rows*2):
+            #     df = add_row(df, grid, r, st.session_state.select_branches, 'South')
+
+            # num_rows = st.slider('Number of rows', min_value=3, max_value=15, value = len(flowDf))
+            # columns = ['Action', 'Role', 'Branch', 'Region']
+            # df = pd.DataFrame(columns=columns)
+                
+            # st.write(f"Branch: {st.session_state.select_branches} Region: North")
+            # grid = st.columns(3)
+            # for r in range(num_rows):
+            #     df = add_row(flowDf, grid, r, st.session_state.select_branches, 'North')
+            # st.write(f"Branch: {st.session_state.select_branches} Region: South")
+            # grid = st.columns(3)
+            # for r in range(num_rows, num_rows*2):
+            #     df = add_row(flowDf, grid, r, st.session_state.select_branches, 'South')
+
+    else:
+        st.title("Login Credentials")
+        st.session_state.flowUser = st.text_input("Username")
+        st.session_state.flowPass = st.text_input("Password", type="password")
+        st.button("Submit")
+        
+    # df.to_excel('flowTable.xlsx', index=False)
 
 # def simulate_operation(duration, description):
 #     progress_text = f"{description}. Please wait. {duration/60} mins"
@@ -647,11 +839,11 @@ def contact_tab():
 #     time.sleep(1)
 #     st.experimental_rerun()
 
-if 'flask_thread' in st.session_state:
-    output = st.session_state.flask_thread
-    if output:
-        st.text("Flask App Output/Error:")
-        st.code(output, language='text')
+# if 'flask_thread' in st.session_state:
+#     output = st.session_state.flask_thread
+#     if output:
+#         st.text("Flask App Output/Error:")
+#         st.code(output, language='text')
 
 if len(st.session_state.select_branches) == 0:
     st.warning("please select a branch")
@@ -699,5 +891,8 @@ else:
             event_tab()
         if st.session_state.selected_tab == "Edit Contact":
             contact_tab()
+        if st.session_state.selected_tab == "Escalation":
+            flow_tab()
         # if st.session_state.selected_tab == "Show Calls":
         #     call_tab()
+                
