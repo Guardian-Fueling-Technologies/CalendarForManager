@@ -17,6 +17,9 @@ password = os.environ.get("passwordGFT")
 SQLaddress = os.environ.get("addressGFT")
 account_sid = os.environ.get("account_sid")
 auth_token = os.environ.get("auth_token")
+flowUsername = os.environ.get("flowUsername")
+flowPassword = os.environ.get("flowPassword")
+
 def getEvent(cursor):
     selectQuery = '''
        SELECT [Technician_ID], [DisplayName], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [RowID]
@@ -890,7 +893,7 @@ else:
         if st.session_state.selected_tab == "Edit Calendar":
             event_tab()
         if st.session_state.selected_tab == "Edit Contact":
-            contact_tab()
+            contact_tab()  
         if st.session_state.selected_tab == "Escalation":
             flow_tab()
         # if st.session_state.selected_tab == "Show Calls":
