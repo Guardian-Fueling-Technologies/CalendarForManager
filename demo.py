@@ -20,6 +20,7 @@ auth_token = os.environ.get("auth_token")
 flowUsername = os.environ.get("flowUsername")
 flowPassword = os.environ.get("flowPassword")
 
+
 def getEvent(cursor):
     selectQuery = '''
        SELECT [Technician_ID], [DisplayName], [Color], [Start], [End], [ResourceId], [Region], [BranchName], [RowID]
@@ -393,7 +394,8 @@ def calendar_tab():
                         Names = matching_contact["Name"].tolist()
                         Phones = matching_contact["Phone"].tolist()
                         emails = matching_contact["Email"].tolist()
-                        st.write(f"<p style='font-family: Arial;'><strong>{matching_rows['Group_ID'][0]}'s Contacts:</strong></p>", unsafe_allow_html=True)
+                        group_id_context = str(matching_rows['Group_ID']).split()[1]
+                        st.write(f"<p style='font-family: Arial;'><strong>{group_id_context}'s Contacts:</strong></p>", unsafe_allow_html=True)
                         for lead_name, lead_Phone, lead_email in zip(Names, Phones, emails):
                             st.write(f"<p style='font-family: Arial;'>{lead_name} |<br>{lead_Phone} |<br> {lead_email}</p>", unsafe_allow_html=True)
                     else:
@@ -487,8 +489,9 @@ def event_tab():
                         "Resource ID",
                         help="Resource ID",
                         # width=inwidth/6,
-                        options= ["Primary", "Backup"]
+                        options= ["Lead", "Back-Up", "FSM"]
                     ),
+                    # legends here "Lead could be your primary"
                     "Region": st.column_config.SelectboxColumn(
                         "Region",
                         help="Region",
@@ -545,7 +548,6 @@ def event_tab():
                 st.write("origin", originbranchdata,"updateevent", st.session_state.updaterowEvent, "insertevent", st.session_state.insertrowEvent, "deleteevent", st.session_state.deleterowEvent)
                 st.session_state.filtered_events = newEventsDF
                 with st.spinner("please wait"):
-                    time.sleep(10)
                     st.session_state.changed = True    
                 st.experimental_rerun()
                 
@@ -638,7 +640,6 @@ def contact_tab():
                     st.write("break here \n origin", originbranchdata,"updateContact", st.session_state.updaterowContact, "insertContact", st.session_state.insertrowContact, "deleteContact", st.session_state.deleterowContact)
                     st.session_state.filtered_contacts = newContactDF
                     with st.spinner("please wait"):
-                        time.sleep(10)
                         st.session_state.changed = True
                     st.experimental_rerun()
 # for flow tab
@@ -768,7 +769,7 @@ def flow_tab():
                 num_rows="dynamic",
                 key="editContacts"
             )
-            st.warning("Kindly reminder, this Button will directly update the database")
+            st.warning("Kindly reminder, this Button will directly update the database max is 15 escalation")
             escalationSubmit = st.form_submit_button("Escalation Submit")
             if not st.session_state.filtered_contacts.empty and escalationSubmit:
                 for region in flowDf["Region"].unique():
@@ -893,7 +894,7 @@ else:
         if st.session_state.selected_tab == "Edit Calendar":
             event_tab()
         if st.session_state.selected_tab == "Edit Contact":
-            contact_tab()  
+            contact_tab()
         if st.session_state.selected_tab == "Escalation":
             flow_tab()
         # if st.session_state.selected_tab == "Show Calls":
