@@ -449,7 +449,7 @@ def event_tab():
             #     update_mode=GridUpdateMode.SELECTION_CHANGED,
             #     columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS
             # )
-            newEventsDF = pd.DataFrame(st.session_state.filtered_events, columns=['Technician_ID','DisplayName',  'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'RowID'])
+            newEventsDF = pd.DataFrame(st.session_state.filtered_events, columns=["Primary","Back-up","FSM",'DisplayName',  'Color', 'Start', 'End', 'ResourceId', 'Region', 'BranchName', 'RowID'])
             newEventsDF = st.data_editor(
                 newEventsDF,
                 column_config={
