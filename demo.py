@@ -595,14 +595,17 @@ def event_tab():
             calendarSubmit = st.form_submit_button("Calendar Submit")
             st.warning("Kindly reminder, this Button will temporarily store on your device")
             if calendarSubmit:
-                empty_displayname_mask = newEventsDF['DisplayName'].isna()
-                newEventsDF['Primary'] = newEventsDF['Primary'].str.strip()
-                st.session_state.filtered_contacts['Technician_ID'] = st.session_state.filtered_contacts['Technician_ID'].str.strip()
-                merged_data = pd.merge(newEventsDF, st.session_state.filtered_contacts, left_on='Primary', right_on='Technician_ID', how='left')
-                merged_data.loc[empty_displayname_mask, 'DisplayName'] = merged_data.loc[empty_displayname_mask, 'Name']
-                merged_data.drop('Technician_ID', axis=1, inplace=True)
-                newEventsDF.loc[empty_displayname_mask, 'DisplayName'] = merged_data.loc[empty_displayname_mask, 'DisplayName']
-                print("here", newEventsDF)
+                # empty_displayname_mask = newEventsDF['DisplayName'].isna()
+                # newEventsDF['Primary'] = newEventsDF['Primary'].str.strip()
+                # st.session_state.filtered_contacts['Technician_ID'] = st.session_state.filtered_contacts['Technician_ID'].str.strip()
+                # merged_data = pd.merge(newEventsDF, st.session_state.filtered_contacts, left_on='Primary', right_on='Technician_ID', how='left')
+                # print(merged_data)
+                # merged_data.loc[empty_displayname_mask, 'DisplayName'] = merged_data.loc[empty_displayname_mask, 'Name']
+                # merged_data.drop('Technician_ID', axis=1, inplace=True)
+                # # print(merged_data)
+                # print("here",newEventsDF.loc[empty_displayname_mask])
+                # # newEventsDF.loc[empty_displayname_mask, 'DisplayName'] = merged_data.loc[empty_displayname_mask, 'DisplayName']
+                # print("here", newEventsDF)
                 phone_pattern = re.compile(r'^\d{10}$')
                 if "ManagerPhone" in st.session_state.filtered_events.columns and not st.session_state.filtered_events["ManagerPhone"].empty:
                     if not st.session_state.filtered_events["ManagerPhone"].apply(lambda x: bool(phone_pattern.match(str(x)))).all():
@@ -619,8 +622,12 @@ def event_tab():
                     st.session_state.insertrowEvent = newEventsDF[insert_condition]
                     delete_condition = ~originbranchdata["RowID"].isin(newEventsDF["RowID"])
                     st.session_state.deleterowEvent = originbranchdata[delete_condition]
-                    if len(insert_condition) != 0:
+                    if len(insert_condition) != 0 and len(delete_condition) != 0:
                         st.session_state.updaterowEvent = originbranchdata[~delete_condition].set_index('RowID').compare(newEventsDF[~insert_condition].set_index('RowID'), align_axis='index')
+                    elif len(insert_condition) != 0:
+                            st.session_state.updaterowEvent = originbranchdata[~delete_condition].set_index('RowID').compare(newEventsDF.set_index('RowID'), align_axis='index')
+                    elif len(delete_condition) != 0:
+                            st.session_state.updaterowEvent = originbranchdata.set_index('RowID').compare(newEventsDF[~insert_condition].set_index('RowID'), align_axis='index')
                 else:
                     st.session_state.insertrowEvent = newEventsDF
                 st.write("origin", originbranchdata,"updateevent", st.session_state.updaterowEvent, "insertevent", st.session_state.insertrowEvent, "deleteevent", st.session_state.deleterowEvent)
