@@ -939,14 +939,13 @@ def flow_tab():
             st.warning("Kindly reminder, this Button will directly update the database max is 15 escalation")
             escalationSubmit = st.form_submit_button("Escalation Submit")
             if not flowDf.empty and escalationSubmit:
-                flowDf = flowDf.sort_values(by="Region")
                 for region in flowDf["Region"].unique():
                     region_contacts = flowDf[flowDf["Region"] == region]
                     num_contacts = len(region_contacts)
                     escalation_order = [str(i) for i in range(1, num_contacts + 1)]
                     flowDf.loc[flowDf["Region"] == region, "Escalation_Order"] = escalation_order
-
-                st.write(flowDf)
+                flowDf = flowDf.sort_values(by=['Region', 'Escalation_Order'])
+                # print(flowDf)
                 updateEscalation(flowDf)
                 st.rerun()
             # num_rows = st.slider('Number of rows', min_value=3, max_value=15)
