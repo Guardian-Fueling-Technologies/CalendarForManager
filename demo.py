@@ -355,8 +355,13 @@ def calendar_tab():
                     'start': row['Start'].strftime("%Y-%m-%d %H:%M"), 
                     'end': row['End'].strftime("%Y-%m-%d %H:%M"),      
                     'Region': row['Region'], 
-                    'BranchName': row['BranchName'], 
+                    'BranchName': row['BranchName'],
                     "Technician_ID": row['Primary'],
+                    "Back-up1":row['Back-up1'],
+                    "Back-up2":row['Back-up2'],
+                    "Back-up3":row['Back-up3'],
+                    "FSM1":row['FSM1'],
+                    "FSM2":row['FSM2'],
                 }
             else:
                 new_event = {
@@ -367,7 +372,12 @@ def calendar_tab():
                     'end': row['End'],      
                     'Region': row['Region'], 
                     'BranchName': row['BranchName'],
-                    "Technician_ID": row['Technician_ID'],
+                    "Technician_ID": row['Primary'],
+                    "Back-up1":row['Back-up1'],
+                    "Back-up2":row['Back-up2'],
+                    "Back-up3":row['Back-up3'],
+                    "FSM1":row['FSM1'],
+                    "FSM2":row['FSM2'],
                 }
             new_calendar_events.append(new_event)
         st.session_state.state = calendar(events=new_calendar_events, options=calendar_options)
@@ -382,16 +392,17 @@ def calendar_tab():
             st.write(f"<h3 style='color: {event['backgroundColor']}; font-family: Arial;'><strong>{event['title']}</h3>", unsafe_allow_html=True)
             formatted_start = datetime.strptime(event['start'], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%d %H:%M")
             formatted_end = datetime.strptime(event['end'], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%d %H:%M")
+            event = event['extendedProps']
+            # st.write(event)
             backup1 = event.get('Back-up1', None)
             backup2 = event.get('Back-up2', None)
             backup3 = event.get('Back-up3', None)
             fsm1 = event.get('FSM1', None)
             fsm2 = event.get('FSM2', None)
-            region = event.get('Region', None)
-            
+            # region = event.get('Region', None)
             additional_info = ""
             if backup1 or backup2 or backup3 or fsm1 or fsm2:
-                additional_info += f"<div style='display: flex; font-family: Arial;'>"
+                additional_info += "<div style='font-family: Arial;'>"
                 additional_info += "<p><strong>Additional Info:</strong></p>"
                 if backup1:
                     additional_info += f"<p>Back-up1: {backup1}</p>"
@@ -404,6 +415,7 @@ def calendar_tab():
                 if fsm2:
                     additional_info += f"<p>FSM2: {fsm2}</p>"
                 additional_info += "</div>"
+
             
             st.write(
                 f"<div style='display: flex; font-family: Arial;'>"
@@ -424,10 +436,14 @@ def calendar_tab():
                 # st.write(f"<p style='font-family: Arial;'>{event['extendedProps']['Region']}</p>", unsafe_allow_html=True)
                 # st.write(f"<p style='font-family: Arial;'><strong>Resource ID: </p>", unsafe_allow_html=True)
                 # st.write(f"<p style='font-family: Arial;'>{state['eventClick']['el']['fcSeg']['eventRange']['def']['resourceIds']}</p>", unsafe_allow_html=True)
-            filtered_contacts = st.session_state.filtered_contacts.dropna(subset=['Group_ID'])
-            matching_rows = filtered_contacts[filtered_contacts['Technician_ID'].str.contains(event['extendedProps']['Technician_ID'])]
-            if not matching_rows['Group_ID'].empty:
-                matching_contact = filtered_contacts[filtered_contacts["Group_ID"].isin(matching_rows['Group_ID'])]
+            event = st.session_state.state['eventClick']['event']
+            mask = (st.session_state.filtered_contacts['Group_ID'].notna()) & (st.session_state.filtered_contacts['Group_ID'].str.strip() != '')
+            filtered_contacts = pd.DataFrame(st.session_state.filtered_contacts[mask])
+
+            # matching_rows = filtered_contacts[filtered_contacts['Technician_ID'].str.contains(event['extendedProps']['Technician_ID'])]
+            # print("here",matching_rows)
+            if not filtered_contacts['Group_ID'].empty:
+                matching_contact = filtered_contacts[filtered_contacts["Group_ID"].isin(filtered_contacts['Group_ID'])]
                 if len(matching_contact) > 0:
                     if st.button("Toggle Group"):
                         # Toggle the state
@@ -439,7 +455,7 @@ def calendar_tab():
                         Names = matching_contact["Name"].tolist()
                         Phones = matching_contact["Phone"].tolist()
                         emails = matching_contact["Email"].tolist()
-                        group_id_context = str(matching_rows['Group_ID']).split()[1]
+                        group_id_context = str(filtered_contacts['Group_ID']).split()[1]
                         st.write(f"<p style='font-family: Arial;'><strong>{group_id_context}'s Contacts:</strong></p>", unsafe_allow_html=True)
                         for lead_name, lead_Phone, lead_email in zip(Names, Phones, emails):
                             st.write(f"<p style='font-family: Arial;'>{lead_name} |<br>{lead_Phone} |<br> {lead_email}</p>", unsafe_allow_html=True)
