@@ -164,8 +164,8 @@ def insertEvents(eventDf):
     return eventDf
 
 def updateContact(contactDF):
-    conn, cursor = createCursor()
-    df_columns = ["Technician_ID", "Role", "Name", "Phone", "Email", "Group_ID", "Manager_email", "Region", "BranchName", "RowID"]
+    conn, cursor = createCursor()      
+    df_columns = ["Technician_ID", "Name", "Phone", "Email", "Group_ID", "Manager_email", "BranchName", "RowID"]
 
     for row_id, row in contactDF.iterrows():
         if(row_id[1]=='self'):
@@ -204,7 +204,7 @@ def deleteContact(contactDf):
 
 def insertContact(contactDF):
     conn, cursor = createCursor()
-    data = contactDF[["Technician_ID", "Role", "Name", "Phone", "Email", "Group_ID", "Region", "BranchName"]].values.tolist()
+    data = contactDF[["Technician_ID", "Name", "Phone", "Email", "Group_ID", "BranchName"]].values.tolist()
     data = [row for row in data]
     insert_query = "INSERT INTO [GFT].[dbo].[CF_OnCall_Contact] WITH(ROWLOCK) ([Technician_ID], [Role], [Name], [Phone], [Email], [Group_ID], [Region], [BranchName]) VALUES (?,?,?,?,?,?,?);"
     if data:
@@ -653,7 +653,7 @@ def event_tab():
 def technicianContactTab():
     # with st.expander("******Edit Contact Form******", expanded=True):
         if len(st.session_state.filtered_contacts) == 0:
-            st.session_state.filtered_contacts = pd.DataFrame([{'Technician_ID':"","Name": "", "Phone": "0000000000", "Email": "@guardianfueltech.com", "Group_ID":"", 'BranchName':st.session_state.selected_branches[0], "Team": "", "RowID":""}])
+            st.session_state.filtered_contacts = pd.DataFrame([{'Technician_ID':"","Name": "", "Phone": "0000000000", "Email": "@guardianfueltech.com", "Group_ID":"", 'BranchName':st.session_state.selected_branches[0], "RowID":""}])
         with st.form(key="edit_Techniciancontact_form"):
             # width = 800
             # inwidth = 500
