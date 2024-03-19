@@ -15,8 +15,6 @@ database = os.environ.get("databaseGFT")
 username = os.environ.get("usernameGFT")
 password = os.environ.get("passwordGFT")
 SQLaddress = os.environ.get("addressGFT")
-account_sid = os.environ.get("account_sid")
-auth_token = os.environ.get("auth_token")
 flowUsername = os.environ.get("flowUsername")
 flowPassword = os.environ.get("flowPassword")
 
@@ -33,7 +31,7 @@ def getEvent(cursor):
 
 def getTechnicianContact(cursor):
     selectQuery = '''
-        SELECT [Technician_ID], [Role], [Name], [Phone], [Email], [Group_ID], [Region], [BranchName], [RowID]
+        SELECT [Technician_ID], [Name], [Phone], [Email], [Group_ID], [BranchName], [RowID]
         FROM [GFT].[dbo].[CF_OnCall_Contact] WITH(NOLOCK);
     '''
     cursor.execute(selectQuery)
